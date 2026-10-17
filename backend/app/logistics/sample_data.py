@@ -1,6 +1,7 @@
 """
 RouteWise AI - Seeded Sample Logistics Data
 Provides deterministic corridors, transport options, base rates, and schedules.
+Expanded with 6 representative Indian logistics corridors and carbon footprint data.
 """
 
 from typing import Dict, List
@@ -12,11 +13,16 @@ LOCATIONS: Dict[str, Location] = {
     "Hyderabad": Location(id="HYD", name="Hyderabad Gateway Cargo Terminal", city="Hyderabad", state="Telangana"),
     "Bengaluru": Location(id="BLR", name="Bengaluru Tech Logistics Center", city="Bengaluru", state="Karnataka"),
     "Chennai": Location(id="MAA", name="Chennai Harbour & Rail Depot", city="Chennai", state="Tamil Nadu"),
+    "Mumbai": Location(id="BOM", name="Mumbai JNPT Cargo Gateway", city="Mumbai", state="Maharashtra"),
+    "Pune": Location(id="PNQ", name="Pune Industrial Logistics Hub", city="Pune", state="Maharashtra"),
+    "Delhi": Location(id="DEL", name="Delhi NCR Air & Rail Freight Hub", city="Delhi", state="Delhi"),
+    "Chandigarh": Location(id="IXC", name="Chandigarh Tricity Cargo Hub", city="Chandigarh", state="Punjab"),
+    "Coimbatore": Location(id="CJB", name="Coimbatore Textile & Industrial Hub", city="Coimbatore", state="Tamil Nadu"),
 }
 
 # Baseline corridors and options (departure times defaulted to 08:00 AM IST on reference day)
 SAMPLE_JOURNEY_OPTIONS: List[JourneyOption] = [
-    # Corridor 1: Vijayawada -> Visakhapatnam (~350 km coastal corridor)
+    # === Corridor 1: Vijayawada -> Visakhapatnam (~350 km coastal corridor) ===
     JourneyOption(
         id="BZA-VTZ-RAIL-01",
         name="Andhra Express Freight Rail (Vande Cargo)",
@@ -98,7 +104,7 @@ SAMPLE_JOURNEY_OPTIONS: List[JourneyOption] = [
         ],
     ),
 
-    # Corridor 2: Hyderabad -> Bengaluru (~570 km)
+    # === Corridor 2: Hyderabad -> Bengaluru (~570 km) ===
     JourneyOption(
         id="HYD-BLR-AIR-01",
         name="Hyderabad-Bengaluru Express Air Cargo",
@@ -147,6 +153,206 @@ SAMPLE_JOURNEY_OPTIONS: List[JourneyOption] = [
         departure_time="07:30",
         assumptions=["Dedicated containerized freight rake"],
     ),
+
+    # === Corridor 3: Chennai -> Vijayawada (~430 km) ===
+    JourneyOption(
+        id="MAA-BZA-RAIL-01",
+        name="Coromandel Freight Express",
+        carrier="South Railway Eastern Freight",
+        mode=TransportMode.RAIL,
+        origin="Chennai",
+        destination="Vijayawada",
+        distance_km=430.0,
+        base_duration_hours=5.5,
+        base_cost_inr=1650.0,
+        weight_capacity_kg=80.0,
+        reliability_score=0.92,
+        carbon_emissions_kg=15.4,
+        departure_time="07:45",
+        assumptions=["Primary Chennai-Howrah rail line via Nellore", "High-frequency freight slot"],
+    ),
+    JourneyOption(
+        id="MAA-BZA-ROAD-EXP",
+        name="East Coast Express Road (NH16)",
+        carrier="DTDC Surface Express",
+        mode=TransportMode.EXPRESS_ROAD,
+        origin="Chennai",
+        destination="Vijayawada",
+        distance_km=445.0,
+        base_duration_hours=7.0,
+        base_cost_inr=1300.0,
+        weight_capacity_kg=100.0,
+        reliability_score=0.85,
+        carbon_emissions_kg=36.8,
+        departure_time="08:00",
+        assumptions=["NH16 coastal highway via Nellore bypass"],
+    ),
+    JourneyOption(
+        id="MAA-BZA-AIR-01",
+        name="Chennai-Vijayawada Air Cargo Link",
+        carrier="SpiceJet Cargo",
+        mode=TransportMode.AIR,
+        origin="Chennai",
+        destination="Vijayawada",
+        distance_km=380.0,
+        base_duration_hours=2.5,
+        base_cost_inr=3600.0,
+        weight_capacity_kg=30.0,
+        reliability_score=0.93,
+        carbon_emissions_kg=82.0,
+        departure_time="09:15",
+        assumptions=["60-minute flight plus ground handling at both ends"],
+    ),
+
+    # === Corridor 4: Mumbai -> Pune (~150 km) ===
+    JourneyOption(
+        id="BOM-PNQ-RAIL-01",
+        name="Deccan Express Freight (CSMT-Pune)",
+        carrier="Central Railway Mumbai Division",
+        mode=TransportMode.RAIL,
+        origin="Mumbai",
+        destination="Pune",
+        distance_km=155.0,
+        base_duration_hours=3.2,
+        base_cost_inr=680.0,
+        weight_capacity_kg=60.0,
+        reliability_score=0.93,
+        carbon_emissions_kg=5.6,
+        departure_time="07:30",
+        assumptions=["Via Ghats via Karjat route", "Standard parcel van service"],
+    ),
+    JourneyOption(
+        id="BOM-PNQ-ROAD-EXP",
+        name="Mumbai-Pune Expressway Sprint",
+        carrier="Delhivery Surface Express",
+        mode=TransportMode.EXPRESS_ROAD,
+        origin="Mumbai",
+        destination="Pune",
+        distance_km=148.0,
+        base_duration_hours=2.2,
+        base_cost_inr=820.0,
+        weight_capacity_kg=150.0,
+        reliability_score=0.89,
+        carbon_emissions_kg=11.8,
+        departure_time="08:00",
+        assumptions=["Mumbai-Pune Expressway (NH48)", "Subject to peak-hour toll delays"],
+    ),
+    JourneyOption(
+        id="BOM-PNQ-AIR-01",
+        name="Mumbai-Pune Same-Day Air Priority",
+        carrier="Blue Dart Premium Air",
+        mode=TransportMode.AIR,
+        origin="Mumbai",
+        destination="Pune",
+        distance_km=120.0,
+        base_duration_hours=1.8,
+        base_cost_inr=2400.0,
+        weight_capacity_kg=20.0,
+        reliability_score=0.97,
+        carbon_emissions_kg=42.0,
+        departure_time="09:00",
+        assumptions=["Short-haul charter flight plus ground transfer", "For time-critical documents and parcels"],
+    ),
+
+    # === Corridor 5: Delhi -> Chandigarh (~250 km) ===
+    JourneyOption(
+        id="DEL-IXC-RAIL-01",
+        name="Shatabdi Freight Link (Delhi-Chandigarh)",
+        carrier="Northern Railway Cargo",
+        mode=TransportMode.RAIL,
+        origin="Delhi",
+        destination="Chandigarh",
+        distance_km=248.0,
+        base_duration_hours=3.5,
+        base_cost_inr=920.0,
+        weight_capacity_kg=80.0,
+        reliability_score=0.95,
+        carbon_emissions_kg=8.9,
+        departure_time="07:00",
+        assumptions=["High-speed rail line Delhi-Ambala-Chandigarh", "Priority cargo coach"],
+    ),
+    JourneyOption(
+        id="DEL-IXC-ROAD-EXP",
+        name="NH44 North Corridor Express",
+        carrier="Gati Express Cargo",
+        mode=TransportMode.EXPRESS_ROAD,
+        origin="Delhi",
+        destination="Chandigarh",
+        distance_km=260.0,
+        base_duration_hours=4.5,
+        base_cost_inr=780.0,
+        weight_capacity_kg=200.0,
+        reliability_score=0.86,
+        carbon_emissions_kg=19.2,
+        departure_time="08:00",
+        assumptions=["NH44 via Ambala", "Standard interstate express routing"],
+    ),
+    JourneyOption(
+        id="DEL-IXC-AIR-01",
+        name="Delhi-Chandigarh Air Express",
+        carrier="Alliance Air Cargo",
+        mode=TransportMode.AIR,
+        origin="Delhi",
+        destination="Chandigarh",
+        distance_km=220.0,
+        base_duration_hours=1.5,
+        base_cost_inr=2800.0,
+        weight_capacity_kg=25.0,
+        reliability_score=0.94,
+        carbon_emissions_kg=48.0,
+        departure_time="09:30",
+        assumptions=["40-min flight plus ground handling", "Chandigarh International Airport (IXC)"],
+    ),
+
+    # === Corridor 6: Chennai -> Coimbatore (~500 km) ===
+    JourneyOption(
+        id="MAA-CJB-RAIL-01",
+        name="Kovai Express Freight Service",
+        carrier="Southern Railway Parcel Division",
+        mode=TransportMode.RAIL,
+        origin="Chennai",
+        destination="Coimbatore",
+        distance_km=495.0,
+        base_duration_hours=6.5,
+        base_cost_inr=1420.0,
+        weight_capacity_kg=100.0,
+        reliability_score=0.93,
+        carbon_emissions_kg=17.8,
+        departure_time="07:00",
+        assumptions=["Direct rail via Salem junction", "Textile-industry freight priority"],
+    ),
+    JourneyOption(
+        id="MAA-CJB-ROAD-EXP",
+        name="Tamil Nadu Highway Express (NH44)",
+        carrier="TNSTC Cargo Express",
+        mode=TransportMode.EXPRESS_ROAD,
+        origin="Chennai",
+        destination="Coimbatore",
+        distance_km=510.0,
+        base_duration_hours=7.5,
+        base_cost_inr=1100.0,
+        weight_capacity_kg=180.0,
+        reliability_score=0.84,
+        carbon_emissions_kg=42.0,
+        departure_time="08:00",
+        assumptions=["Via NH44 Salem-Namakkal-Coimbatore bypass"],
+    ),
+    JourneyOption(
+        id="MAA-CJB-AIR-01",
+        name="Chennai-Coimbatore Air Cargo Link",
+        carrier="Air India Cargo",
+        mode=TransportMode.AIR,
+        origin="Chennai",
+        destination="Coimbatore",
+        distance_km=430.0,
+        base_duration_hours=2.2,
+        base_cost_inr=3100.0,
+        weight_capacity_kg=30.0,
+        reliability_score=0.91,
+        carbon_emissions_kg=71.0,
+        departure_time="09:00",
+        assumptions=["55-min flight + terminal handling at Coimbatore airport"],
+    ),
 ]
 
 
@@ -154,10 +360,19 @@ def get_options_for_route(origin: str, destination: str) -> List[JourneyOption]:
     """Retrieve all available sample journey options for a given origin and destination."""
     origin_clean = origin.strip().lower()
     dest_clean = destination.strip().lower()
-    
+
     matches = [
         opt for opt in SAMPLE_JOURNEY_OPTIONS
         if opt.origin.lower() == origin_clean and opt.destination.lower() == dest_clean
     ]
     return matches
 
+
+ALL_CORRIDORS = [
+    {"origin": "Vijayawada", "destination": "Visakhapatnam", "distance_km": 350.0, "description": "Coastal Andhra Corridor"},
+    {"origin": "Hyderabad", "destination": "Bengaluru", "distance_km": 570.0, "description": "Tech Triangle Corridor"},
+    {"origin": "Chennai", "destination": "Vijayawada", "distance_km": 430.0, "description": "East Coast NH16 Corridor"},
+    {"origin": "Mumbai", "destination": "Pune", "distance_km": 150.0, "description": "Mumbai Metropolitan Express"},
+    {"origin": "Delhi", "destination": "Chandigarh", "distance_km": 250.0, "description": "North India NH44 Corridor"},
+    {"origin": "Chennai", "destination": "Coimbatore", "distance_km": 500.0, "description": "Tamil Nadu Industrial Corridor"},
+]

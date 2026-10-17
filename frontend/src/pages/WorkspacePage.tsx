@@ -14,6 +14,7 @@ import {
   Flame,
   CheckCircle2,
   TrendingDown,
+  MapPin,
 } from 'lucide-react';
 import type {
   ComparisonResult,
@@ -23,6 +24,9 @@ import type {
   TransportMode,
 } from '../types';
 import { ModeBadge, DeadlineBadge } from '../components/Badge';
+import { RouteMap, MapLegend } from '../components/RouteMap';
+import { ComparisonSkeleton } from '../components/Skeleton';
+import { useToast } from '../components/Toast';
 import { api } from '../services/api';
 
 interface WorkspacePageProps {
@@ -40,6 +44,8 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   initialResult,
   setGlobalComparisonResult,
 }) => {
+  const { showSuccess, showError, showWarning } = useToast();
+
   // Input form state
   const [origin, setOrigin] = useState('Vijayawada');
   const [destination, setDestination] = useState('Visakhapatnam');
@@ -48,7 +54,6 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   const [weightKg, setWeightKg] = useState(5.0);
   const [shipmentType, setShipmentType] = useState<ShipmentType>('STANDARD');
   const [priority, setPriority] = useState<PriorityGoal>('DEADLINE_CRITICAL');
-  const [declaredValue, setDeclaredValue] = useState<number | undefined>(undefined);
 
   // Loading & results state
   const [isLoading, setIsLoading] = useState(false);
@@ -59,7 +64,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   const [simDelayHours, setSimDelayHours] = useState(2.0);
   const [isSimulatingReplan, setIsSimulatingReplan] = useState(false);
 
-  // Preset loaders
+  // Preset loaders for all 6 corridors + stress test
   const loadPrimaryDemo = () => {
     setOrigin('Vijayawada');
     setDestination('Visakhapatnam');
@@ -71,23 +76,56 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     setError(null);
   };
 
-  const loadHonestRefusalDemo = () => {
-    setOrigin('Vijayawada');
-    setDestination('Visakhapatnam');
-    setBudgetInr(1500);
-    setDeadlineHours(3.0);
-    setWeightKg(5.0);
-    setShipmentType('STANDARD');
-    setPriority('BALANCED');
-    setError(null);
-  };
-
   const loadInterstateDemo = () => {
     setOrigin('Hyderabad');
     setDestination('Bengaluru');
     setBudgetInr(3000);
     setDeadlineHours(9.0);
     setWeightKg(8.0);
+    setShipmentType('STANDARD');
+    setPriority('BALANCED');
+    setError(null);
+  };
+
+  const loadMumbaiPuneDemo = () => {
+    setOrigin('Mumbai');
+    setDestination('Pune');
+    setBudgetInr(1000);
+    setDeadlineHours(3.0);
+    setWeightKg(10.0);
+    setShipmentType('EXPRESS');
+    setPriority('FASTEST');
+    setError(null);
+  };
+
+  const loadDelhiChandigarhDemo = () => {
+    setOrigin('Delhi');
+    setDestination('Chandigarh');
+    setBudgetInr(1200);
+    setDeadlineHours(4.0);
+    setWeightKg(15.0);
+    setShipmentType('STANDARD');
+    setPriority('CHEAPEST');
+    setError(null);
+  };
+
+  const loadChennaiCoimbatoreDemo = () => {
+    setOrigin('Chennai');
+    setDestination('Coimbatore');
+    setBudgetInr(2500);
+    setDeadlineHours(8.0);
+    setWeightKg(20.0);
+    setShipmentType('STANDARD');
+    setPriority('BALANCED');
+    setError(null);
+  };
+
+  const loadHonestRefusalDemo = () => {
+    setOrigin('Vijayawada');
+    setDestination('Visakhapatnam');
+    setBudgetInr(1500);
+    setDeadlineHours(3.0);
+    setWeightKg(5.0);
     setShipmentType('STANDARD');
     setPriority('BALANCED');
     setError(null);
@@ -108,8 +146,15 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
       });
       setResult(data);
       setGlobalComparisonResult(data);
+      if (data.has_feasible_solution && data.recommended_option) {
+        showSuccess(`Optimal option selected: ${data.recommended_option.option.name}`);
+      } else {
+        showWarning('No options meet all hard constraints — honest refusal report returned.');
+      }
     } catch (err: any) {
-      setError(err.message || 'Failed to compare options via MCP');
+      const msg = err.message || 'Failed to compare options via MCP';
+      setError(msg);
+      showError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -132,13 +177,27 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
         disruption_reason: `Simulated track/highway congestion on ${result.recommended_option.option.name}`,
       });
       onReplanResult(replanData);
+      showWarning(`Disruption injected (+${simDelayHours}h delay). Replanning journey...`);
       onNavigateToReplan();
     } catch (err: any) {
-      alert(`Replan error: ${err.message}`);
+      showError(`Replan error: ${err.message}`);
     } finally {
       setIsSimulatingReplan(false);
     }
   };
+
+  const cityOptions = [
+    { value: 'Vijayawada', label: 'Vijayawada (BZA)' },
+    { value: 'Visakhapatnam', label: 'Visakhapatnam (VTZ)' },
+    { value: 'Hyderabad', label: 'Hyderabad (HYD)' },
+    { value: 'Bengaluru', label: 'Bengaluru (BLR)' },
+    { value: 'Chennai', label: 'Chennai (MAA)' },
+    { value: 'Mumbai', label: 'Mumbai (BOM)' },
+    { value: 'Pune', label: 'Pune (PNQ)' },
+    { value: 'Delhi', label: 'Delhi (DEL)' },
+    { value: 'Chandigarh', label: 'Chandigarh (IXC)' },
+    { value: 'Coimbatore', label: 'Coimbatore (CJB)' },
+  ];
 
   return (
     <div className="space-y-8 pb-12">
@@ -157,24 +216,45 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={loadPrimaryDemo}
-            className="text-xs px-3 py-1.5 rounded-lg bg-blue-600/20 text-cyan-300 border border-blue-500/30 hover:bg-blue-600/30 transition-all cursor-pointer font-medium"
-            title="Vijayawada -> Visakhapatnam (6h, ₹2,000, Reliable)"
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-blue-600/20 text-cyan-300 border border-blue-500/30 hover:bg-blue-600/30 transition-all cursor-pointer font-medium"
+            title="Vijayawada -> Visakhapatnam (6h, ₹2,000)"
           >
-            ⭐ Primary Hackathon Demo
-          </button>
-          <button
-            onClick={loadHonestRefusalDemo}
-            className="text-xs px-3 py-1.5 rounded-lg bg-rose-500/10 text-rose-300 border border-rose-500/20 hover:bg-rose-500/20 transition-all cursor-pointer font-medium"
-            title="3h deadline, ₹1,500 budget (Stress test honest refusal)"
-          >
-            ⚠️ Infeasible Stress Test
+            ⭐ Coastal (BZA → VTZ)
           </button>
           <button
             onClick={loadInterstateDemo}
-            className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition-all cursor-pointer font-medium"
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition-all cursor-pointer font-medium"
             title="Hyderabad -> Bengaluru corridor"
           >
-            🚚 Hyderabad → Bengaluru
+            🚚 Tech Trunk (HYD → BLR)
+          </button>
+          <button
+            onClick={loadMumbaiPuneDemo}
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition-all cursor-pointer font-medium"
+            title="Mumbai -> Pune Expressway"
+          >
+            🚄 Expressway (BOM → PNQ)
+          </button>
+          <button
+            onClick={loadDelhiChandigarhDemo}
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition-all cursor-pointer font-medium"
+            title="Delhi -> Chandigarh corridor"
+          >
+            ✈️ Northern (DEL → IXC)
+          </button>
+          <button
+            onClick={loadChennaiCoimbatoreDemo}
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition-all cursor-pointer font-medium"
+            title="Chennai -> Coimbatore corridor"
+          >
+            🏭 Industrial (MAA → CJB)
+          </button>
+          <button
+            onClick={loadHonestRefusalDemo}
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-rose-500/10 text-rose-300 border border-rose-500/20 hover:bg-rose-500/20 transition-all cursor-pointer font-medium"
+            title="3h deadline, ₹1,500 budget (Stress test honest refusal)"
+          >
+            ⚠️ Stress Infeasible
           </button>
         </div>
       </div>
@@ -182,175 +262,200 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
       {/* Main Grid: Input Parameters and Decision Output */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Column: Constraints Input Form (5 cols) */}
-        <div className="lg:col-span-5 bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-xl">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-cyan-400" />
-              Journey Constraints
-            </h3>
-            <span className="text-[11px] font-mono text-slate-400">Pydantic & MCP Verified</span>
-          </div>
-
-          <div className="space-y-4">
-            {/* Origin & Destination */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Origin City</label>
-                <select
-                  value={origin}
-                  onChange={(e) => setOrigin(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
-                >
-                  <option value="Vijayawada">Vijayawada (BZA)</option>
-                  <option value="Hyderabad">Hyderabad (HYD)</option>
-                  <option value="Chennai">Chennai (MAA)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Destination City</label>
-                <select
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
-                >
-                  <option value="Visakhapatnam">Visakhapatnam (VTZ)</option>
-                  <option value="Bengaluru">Bengaluru (BLR)</option>
-                  <option value="Vijayawada">Vijayawada (BZA)</option>
-                </select>
-              </div>
+        <div className="lg:col-span-5 space-y-6">
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-cyan-400" />
+                Journey Constraints
+              </h3>
+              <span className="text-[11px] font-mono text-slate-400">Pydantic & MCP Verified</span>
             </div>
 
-            {/* Budget & Deadline */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
-                  <Coins className="w-3.5 h-3.5 text-amber-400" /> Max Budget (₹)
-                </label>
-                <input
-                  type="number"
-                  min="500"
-                  step="100"
-                  value={budgetInr}
-                  onChange={(e) => setBudgetInr(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-cyan-400" /> Deadline Window (hrs)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  step="0.5"
-                  value={deadlineHours}
-                  onChange={(e) => setDeadlineHours(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-            </div>
-
-            {/* Weight & Shipment Type */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
-                  <Weight className="w-3.5 h-3.5 text-blue-400" /> Weight (kg)
-                </label>
-                <input
-                  type="number"
-                  min="0.5"
-                  step="0.5"
-                  value={weightKg}
-                  onChange={(e) => setWeightKg(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Handling Type</label>
-                <select
-                  value={shipmentType}
-                  onChange={(e) => setShipmentType(e.target.value as ShipmentType)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
-                >
-                  <option value="STANDARD">Standard Freight</option>
-                  <option value="EXPRESS">Express Priority</option>
-                  <option value="FRAGILE">Fragile (+₹180)</option>
-                  <option value="PERISHABLE">Perishable Cold (+₹260)</option>
-                  <option value="DOCUMENT">Secure Document</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Optimization Priority */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Decision Priority</label>
-              <div className="grid grid-cols-2 gap-2">
-                {(['CHEAPEST', 'FASTEST', 'BALANCED', 'DEADLINE_CRITICAL'] as PriorityGoal[]).map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setPriority(p)}
-                    className={`px-3 py-2 rounded-lg text-xs font-medium border text-left transition-all ${
-                      priority === p
-                        ? 'bg-blue-600/20 border-blue-500 text-cyan-300'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
-                    }`}
+            <div className="space-y-4">
+              {/* Origin & Destination */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Origin City</label>
+                  <select
+                    value={origin}
+                    onChange={(e) => setOrigin(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
                   >
-                    {p === 'DEADLINE_CRITICAL' && '🎯 Deadline Critical'}
-                    {p === 'CHEAPEST' && '💰 Lowest Cost'}
-                    {p === 'FASTEST' && '⚡ Highest Speed'}
-                    {p === 'BALANCED' && '⚖️ Balanced Multi-Criteria'}
-                  </button>
-                ))}
+                    {cityOptions.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Destination City</label>
+                  <select
+                    value={destination}
+                    onChange={(e) => setDestination(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
+                  >
+                    {cityOptions.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Budget & Deadline */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                    <Coins className="w-3.5 h-3.5 text-amber-400" /> Max Budget (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="500"
+                    step="100"
+                    value={budgetInr}
+                    onChange={(e) => setBudgetInr(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-cyan-400" /> Deadline Window (hrs)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.5"
+                    value={deadlineHours}
+                    onChange={(e) => setDeadlineHours(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+              </div>
+
+              {/* Weight & Shipment Type */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                    <Weight className="w-3.5 h-3.5 text-blue-400" /> Weight (kg)
+                  </label>
+                  <input
+                    type="number"
+                    min="0.5"
+                    step="0.5"
+                    value={weightKg}
+                    onChange={(e) => setWeightKg(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Handling Type</label>
+                  <select
+                    value={shipmentType}
+                    onChange={(e) => setShipmentType(e.target.value as ShipmentType)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
+                  >
+                    <option value="STANDARD">Standard Freight</option>
+                    <option value="EXPRESS">Express Priority</option>
+                    <option value="FRAGILE">Fragile (+₹180)</option>
+                    <option value="PERISHABLE">Perishable Cold (+₹260)</option>
+                    <option value="DOCUMENT">Secure Document</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Optimization Priority */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Decision Priority</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['CHEAPEST', 'FASTEST', 'BALANCED', 'DEADLINE_CRITICAL'] as PriorityGoal[]).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPriority(p)}
+                      className={`px-3 py-2 rounded-lg text-xs font-medium border text-left transition-all ${
+                        priority === p
+                          ? 'bg-blue-600/20 border-blue-500 text-cyan-300'
+                          : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {p === 'DEADLINE_CRITICAL' && '🎯 Deadline Critical'}
+                      {p === 'CHEAPEST' && '💰 Lowest Cost'}
+                      {p === 'FASTEST' && '⚡ Highest Speed'}
+                      {p === 'BALANCED' && '⚖️ Balanced Multi-Criteria'}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
+
+            {/* Action Trigger */}
+            <button
+              onClick={handleCompare}
+              disabled={isLoading}
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  Invoking MCP compare_routes...
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 fill-current" />
+                  Compare Options via MCP
+                </>
+              )}
+            </button>
+
+            {error && (
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                {error}
+              </div>
+            )}
           </div>
 
-          {/* Action Trigger */}
-          <button
-            onClick={handleCompare}
-            disabled={isLoading}
-            className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
-          >
-            {isLoading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                Invoking MCP compare_routes...
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4 fill-current" />
-                Compare Options via MCP
-              </>
-            )}
-          </button>
-
-          {error && (
-            <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-              {error}
+          {/* Interactive Route Map Card */}
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-xl">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+                Corridor Map ({origin} → {destination})
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">OpenStreetMap</span>
             </div>
-          )}
+            <RouteMap
+              activeOrigin={origin}
+              activeDestination={destination}
+              height="260px"
+            />
+            <MapLegend />
+          </div>
         </div>
 
         {/* Right Column: Execution Output & Recommendations (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
-          {!result ? (
+          {isLoading ? (
+            <ComparisonSkeleton />
+          ) : !result ? (
             <div className="bg-slate-900/30 border border-dashed border-slate-800 rounded-2xl p-12 text-center space-y-4">
               <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-cyan-400 flex items-center justify-center mx-auto">
                 <Compass className="w-6 h-6 animate-pulse" />
               </div>
               <h3 className="text-base font-semibold text-white">No Active Comparison Computed</h3>
               <p className="text-sm text-slate-400 max-w-md mx-auto">
-                Configure your shipment requirements on the left, or click <strong className="text-cyan-300">Primary Hackathon Demo</strong> above to trigger a real MCP protocol query.
+                Configure your shipment requirements on the left, or click <strong className="text-cyan-300">⭐ Coastal (BZA → VTZ)</strong> above to trigger a real MCP protocol query.
               </p>
               <button
                 onClick={handleCompare}
                 className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700 cursor-pointer"
               >
-                Execute Default Corridor
+                Execute Selected Corridor
               </button>
             </div>
           ) : (
@@ -480,7 +585,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                     onClick={onNavigateToComparison}
                     className="text-xs text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1 cursor-pointer"
                   >
-                    View Side-by-Side Breakdown <ArrowRight className="w-3.5 h-3.5" />
+                    View Side-by-Side Breakdown & Radar <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
 

@@ -13,8 +13,11 @@ import {
   Layers,
   ArrowUpRight,
   ArrowDownRight,
+  MapPin,
 } from 'lucide-react';
 import type { ReplanningResult } from '../types';
+import { RouteMap, MapLegend } from '../components/RouteMap';
+import { useToast } from '../components/Toast';
 import { api } from '../services/api';
 
 interface ReplanPageProps {
@@ -26,6 +29,10 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
   replanResult,
   setReplanResult,
 }) => {
+  const { showSuccess, showError, showWarning } = useToast();
+
+  const [origin, setOrigin] = useState('Vijayawada');
+  const [destination, setDestination] = useState('Visakhapatnam');
   const [delayHours, setDelayHours] = useState(2.0);
   const [isCancelled, setIsCancelled] = useState(false);
   const [costIncreasePct, setCostIncreasePct] = useState(0.0);
@@ -37,12 +44,13 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
     setIsReplanning(true);
     setError(null);
     try {
+      const optionId = origin === 'Vijayawada' ? 'BZA-VTZ-RAIL-01' : origin === 'Hyderabad' ? 'HYD-BLR-RAIL-01' : 'BZA-VTZ-RAIL-01';
       const data = await api.replanJourney({
-        original_option_id: 'BZA-VTZ-RAIL-01',
-        origin: 'Vijayawada',
-        destination: 'Visakhapatnam',
+        original_option_id: optionId,
+        origin,
+        destination,
         delay_hours: delayHours,
-        budget_inr: 2000.0,
+        budget_inr: 2500.0,
         deadline_hours: 6.0,
         weight_kg: 5.0,
         shipment_type: 'STANDARD',
@@ -52,12 +60,26 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
         disruption_reason: reason,
       });
       setReplanResult(data);
+      if (data.revised_recommended_option) {
+        showSuccess(`Autonomous Replan Succeeded! Rerouted to: ${data.revised_recommended_option.option.name}`);
+      } else {
+        showWarning('Disruption caused plan infeasibility without viable alternative within constraints.');
+      }
     } catch (err: any) {
-      setError(err.message || 'Failed to execute replanning');
+      const msg = err.message || 'Failed to execute replanning';
+      setError(msg);
+      showError(msg);
     } finally {
       setIsReplanning(false);
     }
   };
+
+  const mapSegments = [
+    { from: origin, to: destination, mode: 'RAIL' as const, isDisrupted: true, isActive: true },
+    ...(replanResult?.revised_recommended_option
+      ? [{ from: origin, to: destination, mode: replanResult.revised_recommended_option.option.mode, isDisrupted: false, isActive: true }]
+      : []),
+  ];
 
   return (
     <div className="space-y-8 pb-12">
@@ -69,7 +91,7 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
             Disruption Simulator & Resilient Replanning
           </h1>
           <p className="text-sm text-slate-400">
-            Real-time before-and-after decision resilience for the Vijayawada → Visakhapatnam corridor.
+            Real-time before-and-after decision resilience for the {origin} → {destination} corridor.
           </p>
         </div>
 
@@ -92,62 +114,128 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
         </button>
       </div>
 
-      {/* Disruption Parameters Panel */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
-        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-amber-400" />
-          Disruption Scenario Controls
-        </h3>
+      {/* Disruption Parameters Panel + Map Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="lg:col-span-7 bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              Disruption Scenario Controls
+            </h3>
+            <span className="text-[11px] font-mono text-cyan-400">replan_journey MCP Tool</span>
+          </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">
-              Simulated Delay Duration: <strong className="text-cyan-300">+{delayHours} hours</strong>
-            </label>
-            <input
-              type="range"
-              min="0.5"
-              max="5.0"
-              step="0.5"
-              value={delayHours}
-              onChange={(e) => setDelayHours(parseFloat(e.target.value))}
-              className="w-full accent-cyan-400 cursor-pointer"
-            />
-            <div className="flex justify-between text-[10px] text-slate-500 mt-1">
-              <span>+0.5h (Minor)</span>
-              <span>+2.0h (Critical)</span>
-              <span>+5.0h (Severe)</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">Corridor Origin</label>
+              <select
+                value={origin}
+                onChange={(e) => setOrigin(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400"
+              >
+                <option value="Vijayawada">Vijayawada (BZA)</option>
+                <option value="Hyderabad">Hyderabad (HYD)</option>
+                <option value="Chennai">Chennai (MAA)</option>
+                <option value="Mumbai">Mumbai (BOM)</option>
+                <option value="Delhi">Delhi (DEL)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">Corridor Destination</label>
+              <select
+                value={destination}
+                onChange={(e) => setDestination(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400"
+              >
+                <option value="Visakhapatnam">Visakhapatnam (VTZ)</option>
+                <option value="Bengaluru">Bengaluru (BLR)</option>
+                <option value="Vijayawada">Vijayawada (BZA)</option>
+                <option value="Pune">Pune (PNQ)</option>
+                <option value="Chandigarh">Chandigarh (IXC)</option>
+              </select>
             </div>
           </div>
 
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Disruption Reason</label>
-            <input
-              type="text"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 text-xs"
-            />
+          <div className="space-y-3 text-xs pt-1">
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">
+                Simulated Delay Duration: <strong className="text-cyan-300">+{delayHours} hours</strong>
+              </label>
+              <input
+                type="range"
+                min="0.5"
+                max="5.0"
+                step="0.5"
+                value={delayHours}
+                onChange={(e) => setDelayHours(parseFloat(e.target.value))}
+                className="w-full accent-cyan-400 cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                <span>+0.5h (Minor)</span>
+                <span>+2.0h (Critical)</span>
+                <span>+5.0h (Severe)</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">Disruption Incident Reason</label>
+              <input
+                type="text"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 text-xs"
+              />
+            </div>
+
+            <div className="flex items-center gap-4 pt-1">
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300 font-medium">
+                <input
+                  type="checkbox"
+                  checked={isCancelled}
+                  onChange={(e) => setIsCancelled(e.target.checked)}
+                  className="rounded bg-slate-950 border-slate-700 text-cyan-400 focus:ring-0 w-4 h-4"
+                />
+                Option Cancellation (Force Grounding / Total Outage)
+              </label>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4 pt-4">
-            <label className="flex items-center gap-2 cursor-pointer text-slate-300 font-medium">
-              <input
-                type="checkbox"
-                checked={isCancelled}
-                onChange={(e) => setIsCancelled(e.target.checked)}
-                className="rounded bg-slate-950 border-slate-700 text-cyan-400 focus:ring-0 w-4 h-4"
-              />
-              Option Cancellation (Force Grounding)
-            </label>
-          </div>
+          {error && (
+            <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+              {error}
+            </div>
+          )}
         </div>
 
-        {error && (
-          <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-            {error}
+        {/* Live Disruption Map */}
+        <div className="lg:col-span-5 bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-xl">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-rose-400" />
+              Disruption Corridor Map
+            </span>
+            <span className="text-[10px] text-rose-400 font-mono font-bold animate-pulse">● INCIDENT ACTIVE</span>
           </div>
-        )}
+          <RouteMap
+            activeOrigin={origin}
+            activeDestination={destination}
+            segments={mapSegments}
+            height="230px"
+          />
+          <div className="text-[11px] text-slate-400 flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full bg-rose-500" />
+              <span>Disrupted Track (Red)</span>
+            </div>
+            {replanResult?.revised_recommended_option && (
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-cyan-400" />
+                <span>Rerouted Mode</span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Before, Disrupted, and After 3-Column Experience */}
@@ -252,7 +340,7 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
                 </div>
                 <div className="flex justify-between py-1">
                   <span className="text-slate-400">Deadline Status:</span>
-                  <span className="text-rose-400 font-semibold">Late by 12 mins (misses 6h window)</span>
+                  <span className="text-rose-400 font-semibold">Late by 12 mins (misses window)</span>
                 </div>
               </div>
             </div>

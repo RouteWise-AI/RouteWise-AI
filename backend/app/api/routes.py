@@ -3,11 +3,15 @@ RouteWise AI - FastAPI API Endpoints
 Provides REST endpoints for frontend, wrapping genuine MCP tool calls and agent conversations.
 """
 
+import asyncio
+import json as _json
 from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from ..agent.orchestrator import agent_orchestrator
 from ..config.settings import settings
+from ..logistics import sample_data
 from ..mcp_client.activity_logger import mcp_activity_logger
 from ..mcp_client.client import default_mcp_client
 from ..schemas.api import (
@@ -53,11 +57,7 @@ async def get_config() -> Dict[str, Any]:
         "aws_region": settings.aws_region,
         "bedrock_model_id": settings.bedrock_model_id,
         "mcp_server_url": settings.mcp_server_url,
-        "corridors": [
-            {"origin": "Vijayawada", "destination": "Visakhapatnam", "distance_km": 350.0},
-            {"origin": "Hyderabad", "destination": "Bengaluru", "distance_km": 570.0},
-            {"origin": "Chennai", "destination": "Vijayawada", "distance_km": 430.0},
-        ],
+        "corridors": sample_data.ALL_CORRIDORS,
         "default_scenario": {
             "origin": "Vijayawada",
             "destination": "Visakhapatnam",
@@ -201,4 +201,45 @@ async def reset_demo_state() -> Dict[str, Any]:
         "status": "reset_complete",
         "message": "Demo state and session history reset to baseline.",
     }
+
+
+@router.get("/mcp/activity/stream")
+async def stream_mcp_activity():
+    """SSE endpoint — streams new MCP activity records to the browser in real time."""
+    async def event_generator():
+        last_seen_id = None
+        while True:
+            records = mcp_activity_logger.get_recent(limit=50)
+            new_records = []
+            if last_seen_id is None:
+                # On first connect send the most recent 5
+                new_records = records[-5:] if records else []
+            else:
+                # Only send records newer than last seen
+                found = False
+                for r in records:
+                    if found:
+                        new_records.append(r)
+                    if r.id == last_seen_id:
+                        found = True
+                if not found and records:
+                    new_records = records
+
+            for record in new_records:
+                last_seen_id = record.id
+                data = _json.dumps(record.model_dump())
+                yield f"data: {data}\n\n"
+
+            await asyncio.sleep(1.5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
+
 

@@ -12,7 +12,10 @@ import {
   Coins,
   CheckCircle2,
   Terminal,
+  MapPin,
+  Leaf,
 } from 'lucide-react';
+import { RouteMap, MapLegend } from '../components/RouteMap';
 
 interface LandingPageProps {
   onOpenWorkspace: () => void;
@@ -78,6 +81,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
+      {/* Interactive Corridor Map Section */}
+      <section className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 sm:p-8 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-cyan-400" />
+              <h2 className="text-xl sm:text-2xl font-bold text-white">
+                Live Indian Multimodal Logistics Corridors
+              </h2>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              Deterministic routing network spanning Rail, Express Road, Standard Freight, and Air Shuttle across 10 major hubs.
+            </p>
+          </div>
+          <button
+            onClick={onOpenWorkspace}
+            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-2 shrink-0 cursor-pointer shadow-md"
+          >
+            Plan a Shipment <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <RouteMap height="360px" />
+        <MapLegend />
+      </section>
+
       {/* The Problem We Solve */}
       <section className="bg-slate-900/50 border border-slate-800 rounded-2xl p-8 sm:p-10">
         <div className="max-w-3xl mx-auto space-y-4 text-center mb-8">
@@ -139,18 +168,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 space-y-3">
-            <div className="text-xs font-mono font-bold text-indigo-400">STEP 02</div>
-            <h4 className="text-base font-bold text-white">MCP Tool Execution</h4>
+            <div className="text-xs font-mono font-bold text-cyan-400">STEP 02</div>
+            <h4 className="text-base font-bold text-white">MCP Tool Invocations</h4>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Dispatches protocol calls over Streamable HTTP to 7 dedicated MCP tools for candidate ranking, pricing, and feasibility checks.
+              Executes real JSON-RPC tools over Streamable HTTP: <code className="text-cyan-300 font-mono">compare_routes</code>, <code className="text-cyan-300 font-mono">calculate_delivery_cost</code>, etc.
             </p>
           </div>
 
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 space-y-3">
-            <div className="text-xs font-mono font-bold text-cyan-400">STEP 03</div>
-            <h4 className="text-base font-bold text-white">Transparent Reasoning</h4>
+            <div className="text-xs font-mono font-bold text-purple-400">STEP 03</div>
+            <h4 className="text-base font-bold text-white">AI Grounded Synthesis</h4>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Amazon Bedrock Converse API synthesizes grounded tradeoff explanations without hallucinating prices or unachievable routes.
+              Amazon Bedrock Converse API or deterministic mock orchestrator evaluates constraints without hallucinating carriers.
             </p>
           </div>
 
@@ -158,33 +187,33 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="text-xs font-mono font-bold text-emerald-400">STEP 04</div>
             <h4 className="text-base font-bold text-white">Dynamic Replanning</h4>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Simulates real-world delays, evaluates impact on arrival windows, and computes instant before-and-after variance metrics.
+              When transit delays strike, the agent replans across modes to preserve hard deadlines and prevent supply chain failure.
             </p>
           </div>
         </div>
       </section>
 
-      {/* Primary Demonstration Corridor Banner */}
-      <section className="bg-gradient-to-r from-blue-950/60 via-slate-900 to-indigo-950/60 border border-blue-500/30 rounded-2xl p-8 sm:p-10 space-y-6">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-              Primary Hackathon Corridor
-            </span>
-            <h3 className="text-2xl font-bold text-white">Vijayawada to Visakhapatnam (~350 km Coastal Highway & Rail)</h3>
-            <p className="text-sm text-slate-300 max-w-2xl">
-              Preset with a 6-hour delivery deadline, ₹2,000 maximum budget, and high reliability focus. Test how the system selects Express Rail, simulates a 2-hour track bottleneck, and instantly replans to Coastal Highway Express.
-            </p>
+      {/* Highlight Corridor Card */}
+      <section className="bg-gradient-to-r from-blue-950/60 via-slate-900 to-indigo-950/60 border border-blue-500/30 rounded-2xl p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-blue-500/10 text-cyan-300 text-xs font-semibold">
+            Featured Demonstration Corridor
           </div>
-
-          <button
-            onClick={onOpenWorkspace}
-            className="px-5 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm flex items-center gap-2 whitespace-nowrap cursor-pointer transition-all shadow-md shadow-cyan-500/20"
-          >
-            Run Demo Corridor
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          <h3 className="text-xl sm:text-2xl font-bold text-white">
+            Vijayawada (BZA) → Visakhapatnam (VTZ)
+          </h3>
+          <p className="text-xs sm:text-sm text-slate-300 max-w-xl">
+            Simulate a 5 kg standard shipment with a ₹2,000 budget and a 6-hour deadline. Compare Freight Rail, Highway Express, Road, and Air Shuttle. Test an unexpected 2-hour rail delay and watch RouteWise autonomously replan to highway express to restore deadline feasibility.
+          </p>
         </div>
+
+        <button
+          onClick={onOpenWorkspace}
+          className="px-5 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm flex items-center gap-2 whitespace-nowrap cursor-pointer transition-all shadow-md shadow-cyan-500/20"
+        >
+          Run Demo Corridor
+          <ArrowRight className="w-4 h-4" />
+        </button>
       </section>
 
       {/* Protocol Architecture Inspector CTA */}
@@ -210,4 +239,3 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     </div>
   );
 };
-
