@@ -73,3 +73,4 @@ class ReplanJourneyRequest(BaseModel):
     is_cancelled: bool = False
     cost_increase_pct: float = 0.0
     disruption_reason: str = "Simulated track/highway congestion"
+

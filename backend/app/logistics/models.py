@@ -155,3 +155,4 @@ class ReplanningResult(BaseModel):
     all_revised_options: List[EvaluatedOption] = Field(default_factory=list)
     decision_explanation: str
     remaining_risks: List[str] = Field(default_factory=list)
+

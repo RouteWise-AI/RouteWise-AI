@@ -221,3 +221,4 @@ class BedrockProvider(BaseAIProvider):
                 tools_executed=tools_executed,
                 session_id=session_id,
             )
+

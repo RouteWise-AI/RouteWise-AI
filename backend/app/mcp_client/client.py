@@ -138,3 +138,4 @@ class RouteWiseMCPClient:
 
 # Global default client
 default_mcp_client = RouteWiseMCPClient()
+

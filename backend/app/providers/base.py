@@ -29,3 +29,4 @@ class BaseAIProvider(ABC):
     def get_provider_name(self) -> str:
         """Return provider identifier (e.g. 'mock' or 'bedrock')."""
         pass
+

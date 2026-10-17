@@ -87,3 +87,4 @@ async def test_bedrock_converse_tool_use_loop():
         assert res.tools_executed[0]["tool"] == "compare_routes"
         assert "Rail Express" in res.response
         assert mock_client.converse.call_count == 2
+

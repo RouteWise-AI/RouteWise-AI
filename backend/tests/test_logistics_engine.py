@@ -141,3 +141,4 @@ def test_disruption_and_replanning_scenario():
     assert replan.revised_recommended_option.option.id == "BZA-VTZ-ROAD-EXP"
     assert replan.revised_recommended_option.deadline.estimated_duration_hours <= 6.0
     assert "REPLAN TRIGGERED" in replan.decision_explanation
+

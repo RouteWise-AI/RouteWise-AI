@@ -160,3 +160,4 @@ def get_options_for_route(origin: str, destination: str) -> List[JourneyOption]:
         if opt.origin.lower() == origin_clean and opt.destination.lower() == dest_clean
     ]
     return matches
+

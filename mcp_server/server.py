@@ -281,3 +281,4 @@ if __name__ == "__main__":
     port = int(os.getenv("MCP_SERVER_PORT", "8000"))
     print(f"Starting RouteWise MCP Server on http://{host}:{port} (MCP endpoint: {os.getenv('MCP_SERVER_PATH', '/mcp')})")
     uvicorn.run(app, host=host, port=port, log_level="info")
+

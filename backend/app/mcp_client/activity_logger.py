@@ -44,3 +44,4 @@ class ActivityLogger:
 
 # Global singleton instance for backend inspector
 mcp_activity_logger = ActivityLogger()
+
