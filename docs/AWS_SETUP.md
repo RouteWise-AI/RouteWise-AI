@@ -83,3 +83,4 @@ python scripts/run_local.py
 - **Bounded Agent Turns:** Tool-calling loops are hard-capped at a maximum of 5 iterations per query.
 - **Stateless Architecture:** No persistent AWS compute, databases, or paid serverless resources are provisioned.
 - **Instant Fallback:** If AWS credentials are removed or invalid, RouteWise AI surfaces a clear configuration message without crashing and lets you switch back to Mock Mode in the UI Settings.
+

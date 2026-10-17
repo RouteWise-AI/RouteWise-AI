@@ -66,3 +66,4 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
    aws bedrock list-foundation-models --region us-east-1
    ```
 4. If credentials are not immediately available, simply keep `AI_PROVIDER=mock` in `.env` to test the full application offline with zero cost.
+

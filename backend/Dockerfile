@@ -18,3 +18,4 @@ ENV MCP_SERVER_URL="http://mcp_server:8000/mcp"
 EXPOSE 8001
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+

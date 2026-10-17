@@ -17,3 +17,4 @@ ENV MCP_SERVER_PORT="8000"
 EXPOSE 8000
 
 CMD ["python", "mcp_server/server.py"]
+

@@ -10,6 +10,14 @@ import sys
 import time
 from pathlib import Path
 
+# Ensure UTF-8 stdout on Windows console
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 # Detect python executable in venv
@@ -45,7 +53,7 @@ def main():
     signal.signal(signal.SIGTERM, terminate_all)
 
     print("=" * 70)
-    print("  🚀 ROUTEWISE AI — Smarter Decisions for Every Journey")
+    print("  [RouteWise AI] Smarter Decisions for Every Journey")
     print("  Amazon Developer Hackathon: Build, Ship, Shape Edition")
     print("=" * 70)
 
@@ -87,14 +95,15 @@ def main():
         [NPM_CMD, "run", "dev", "--", "--host", "127.0.0.1"],
         cwd=str(ROOT_DIR / "frontend"),
         env=env,
+        shell=(sys.platform == "win32"),
     )
     processes.append(frontend_proc)
 
     print("\n" + "=" * 70)
-    print("  ✨ ALL SERVICES RUNNING LOCALLY:")
-    print("  🌐 Web Application:   http://localhost:5173 (or http://127.0.0.1:5173)")
-    print("  ⚡ Backend REST API:  http://127.0.0.1:8001 (Docs: http://127.0.0.1:8001/docs)")
-    print("  🤖 MCP Streamable:    http://127.0.0.1:8000/mcp (Health: http://127.0.0.1:8000/health)")
+    print("  >>> ALL SERVICES RUNNING LOCALLY:")
+    print("  [+] Web Application:   http://localhost:5173 (or http://127.0.0.1:5173)")
+    print("  [+] Backend REST API:  http://127.0.0.1:8001 (Docs: http://127.0.0.1:8001/docs)")
+    print("  [+] MCP Streamable:    http://127.0.0.1:8000/mcp (Health: http://127.0.0.1:8000/health)")
     print("=" * 70)
     print("\nPress Ctrl+C to terminate all services.\n")
 
@@ -113,3 +122,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

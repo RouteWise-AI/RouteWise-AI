@@ -101,3 +101,4 @@ This script provides an exact, reproducible walkthrough for judges and evaluator
    - Click any record to expand and inspect the exact JSON-RPC tool arguments and structured server responses.
 3. Review the **Dynamically Discovered MCP Tools** section:
    - Shows all 7 advertised tools discovered dynamically over Streamable HTTP.
+
