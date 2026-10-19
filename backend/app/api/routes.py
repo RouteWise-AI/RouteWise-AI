@@ -58,6 +58,7 @@ async def get_config() -> Dict[str, Any]:
         "bedrock_model_id": settings.bedrock_model_id,
         "mcp_server_url": settings.mcp_server_url,
         "corridors": sample_data.ALL_CORRIDORS,
+        "locations": [loc.model_dump() for loc in sample_data.LOCATIONS.values()],
         "default_scenario": {
             "origin": "Vijayawada",
             "destination": "Visakhapatnam",
@@ -66,7 +67,20 @@ async def get_config() -> Dict[str, Any]:
             "priority": "DEADLINE_CRITICAL",
             "weight_kg": 5.0,
         },
+        "map_provider": {
+            "type": "leaflet-openstreetmap",
+            "default_tile_source": "CARTO Dark Matter (OpenStreetMap contributors)",
+            "requires_api_key": False,
+            "geocoding_provider": settings.geocoding_provider,
+            "has_external_routing_key": settings.has_openrouteservice_key,
+        },
     }
+
+
+@router.get("/locations")
+async def get_locations() -> List[Dict[str, Any]]:
+    """Return the single canonical registry of supported logistics hub locations."""
+    return [loc.model_dump() for loc in sample_data.LOCATIONS.values()]
 
 
 @router.post("/agent/chat", response_model=ChatResponse)
@@ -212,9 +226,13 @@ async def stream_mcp_activity():
             records = mcp_activity_logger.get_recent(limit=50)
             new_records = []
             if last_seen_id is None:
+                # Flush initial comment so reverse proxy immediately opens stream
+                yield ": connected\n\n"
                 # On first connect send the most recent 5
                 new_records = records[-5:] if records else []
             else:
+                # Send periodic heartbeat comment to keep tunnel active
+                yield ": ping\n\n"
                 # Only send records newer than last seen
                 found = False
                 for r in records:

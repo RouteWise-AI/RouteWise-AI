@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import type { MCPActivityRecord, MCPToolMeta, SystemHealth } from '../types';
 import { useToast } from '../components/Toast';
-import { api } from '../services/api';
+import { api, buildApiUrl } from '../services/api';
 
 interface InspectorPageProps {
   health: SystemHealth | null;
@@ -57,7 +57,7 @@ export const InspectorPage: React.FC<InspectorPageProps> = ({ health, onRefreshH
     // Establish Server-Sent Events (SSE) connection for real-time live streaming
     let eventSource: EventSource | null = null;
     try {
-      eventSource = new EventSource('/api/mcp/activity/stream');
+      eventSource = new EventSource(buildApiUrl('/api/mcp/activity/stream'));
 
       eventSource.onopen = () => {
         setIsLiveStreaming(true);

@@ -13,7 +13,12 @@ import { api } from './services/api';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<string>(() => {
-    return localStorage.getItem('routewise_tab') || 'landing';
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam) return tabParam;
+    } catch {}
+    return localStorage.getItem('routewise_tab') || 'workspace';
   });
   const [health, setHealth] = useState<SystemHealth | null>(null);
 
@@ -57,6 +62,11 @@ export function App() {
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     localStorage.setItem('routewise_tab', tab);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.replaceState({}, '', url.toString());
+    } catch {}
   };
 
   const fetchHealth = async () => {

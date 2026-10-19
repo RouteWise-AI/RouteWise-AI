@@ -32,10 +32,26 @@ body {
   background: #334155;
 }
 
-/* Leaflet map styling overrides */
+/* Leaflet map styling overrides & Tailwind compatibility */
 .leaflet-container {
-  background-color: #070b14 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  min-width: 100% !important;
+  position: relative;
+  background-color: #0b1120 !important;
   font-family: inherit !important;
+  z-index: 10;
+}
+
+.leaflet-container img {
+  max-width: none !important;
+  max-height: none !important;
+}
+
+/* Graceful tile degradation: prevent broken image borders on offline/blocked tiles */
+.leaflet-tile-container img {
+  border: 0;
 }
 
 .leaflet-popup-content-wrapper {
@@ -49,4 +65,3 @@ body {
 .leaflet-popup-tip {
   background: #0f172a !important;
 }
-

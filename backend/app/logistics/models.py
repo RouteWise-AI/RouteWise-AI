@@ -51,6 +51,12 @@ class Location(BaseModel):
     city: str
     state: str
     hub_type: str = "INTERCITY_HUB"
+    lat: float = 0.0
+    lon: float = 0.0
+    rail_code: Optional[str] = None
+    airport_code: Optional[str] = None
+    aliases: List[str] = Field(default_factory=list)
+    supported_modes: List[TransportMode] = Field(default_factory=list)
 
 
 class ShipmentDetails(BaseModel):
@@ -126,33 +132,58 @@ class DisruptionDetails(BaseModel):
 
 
 class ComparisonResult(BaseModel):
+    run_id: str = Field(default="", description="Unique authoritative planning-run identifier")
+    created_at: str = Field(default="", description="ISO timestamp of run execution")
     origin: str
     destination: str
+    origin_id: str = ""
+    destination_id: str = ""
+    distance_km: float = 0.0
     priority: PriorityGoal
     budget_inr: float
     deadline_hours: float
+    weight_kg: float = 5.0
+    shipment_type: ShipmentType = ShipmentType.STANDARD
     total_evaluated: int
     feasible_count: int
     recommended_option: Optional[EvaluatedOption] = None
     alternatives: List[EvaluatedOption] = Field(default_factory=list)
     has_feasible_solution: bool
     refusal_or_tradeoff_explanation: str
-    data_source: str = "RouteWise Deterministic Logistics Simulation Engine v1.0 (INR seeded corridors)"
+    data_source: str = "RouteWise Deterministic Logistics Engine v1.0 (Simulated estimates - not live carrier telemetry)"
 
 
 class ReplanningResult(BaseModel):
+    run_id: str = Field(default="", description="Unique authoritative planning-run identifier")
+    created_at: str = Field(default="", description="ISO timestamp of run execution")
     original_option_id: str
+    original_option_name: str = ""
+    original_carrier: str = ""
+    original_mode: TransportMode = TransportMode.RAIL
+    origin: str = ""
+    destination: str = ""
+    origin_id: str = ""
+    destination_id: str = ""
+    budget_inr: float = 0.0
+    deadline_hours: float = 0.0
     original_cost_inr: float
     original_duration_hours: float
     original_arrival: str
     disruption_applied: DisruptionDetails
+    baseline_duration_hours: float = 0.0
+    applicable_delay_hours: float = 0.0
     disrupted_duration_hours: float
     disrupted_arrival: str
+    disrupted_margin_hours: float = 0.0
+    disrupted_status: DeadlineStatus = DeadlineStatus.ON_TIME
     disrupted_still_feasible: bool
     revised_recommended_option: Optional[EvaluatedOption] = None
+    is_revised_feasible: bool = False
     cost_delta_inr: float
     duration_delta_hours: float
     all_revised_options: List[EvaluatedOption] = Field(default_factory=list)
     decision_explanation: str
     remaining_risks: List[str] = Field(default_factory=list)
+    data_source: str = "RouteWise Deterministic Logistics Engine v1.0 (Simulated disruption estimates)"
+
 

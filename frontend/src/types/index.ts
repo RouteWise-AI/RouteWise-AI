@@ -61,11 +61,15 @@ export interface EvaluatedOption {
 }
 
 export interface ComparisonResult {
+  run_id?: string;
+  created_at?: string;
   origin: string;
   destination: string;
   priority: PriorityGoal;
   budget_inr: number;
   deadline_hours: number;
+  weight_kg?: number;
+  shipment_type?: ShipmentType;
   total_evaluated: number;
   feasible_count: number;
   recommended_option?: EvaluatedOption;
@@ -84,20 +88,37 @@ export interface DisruptionDetails {
 }
 
 export interface ReplanningResult {
+  run_id?: string;
+  created_at?: string;
   original_option_id: string;
+  original_option_name?: string;
+  original_carrier?: string;
+  original_mode?: TransportMode;
+  origin?: string;
+  destination?: string;
+  origin_id?: string;
+  destination_id?: string;
+  budget_inr?: number;
+  deadline_hours?: number;
   original_cost_inr: number;
   original_duration_hours: number;
   original_arrival: string;
   disruption_applied: DisruptionDetails;
+  baseline_duration_hours?: number;
+  applicable_delay_hours?: number;
   disrupted_duration_hours: number;
   disrupted_arrival: string;
+  disrupted_margin_hours?: number;
+  disrupted_status?: DeadlineStatus;
   disrupted_still_feasible: boolean;
   revised_recommended_option?: EvaluatedOption;
+  is_revised_feasible?: boolean;
   cost_delta_inr: number;
   duration_delta_hours: number;
   all_revised_options: EvaluatedOption[];
   decision_explanation: string;
   remaining_risks: string[];
+  data_source?: string;
 }
 
 export interface MCPActivityRecord {

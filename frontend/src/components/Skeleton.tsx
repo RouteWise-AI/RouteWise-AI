@@ -59,3 +59,4 @@ export const ChatMessageSkeleton: React.FC = () => (
     </div>
   </div>
 );
+

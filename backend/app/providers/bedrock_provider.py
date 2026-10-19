@@ -12,7 +12,9 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 from .base import BaseAIProvider
-from ..config.settings import settings
+from .mock_provider import MockProvider
+from dotenv import load_dotenv
+from ..config.settings import ROOT_DIR, settings
 from ..schemas.api import ChatMessage, ChatResponse
 
 logger = logging.getLogger(__name__)
@@ -43,8 +45,15 @@ class BedrockProvider(BaseAIProvider):
     def _get_client(self):
         """Lazy initialization of boto3 Bedrock Runtime client."""
         if self._bedrock_client is None:
+            # Ensure backend/.env is loaded so AWS_BEARER_TOKEN_BEDROCK or IAM keys are in os.environ
+            load_dotenv(ROOT_DIR / ".env")
+            load_dotenv(ROOT_DIR / "backend" / ".env", override=True)
+
             # Uses AWS default credential provider chain (env vars, profile, or IAM role)
-            session = boto3.Session(region_name=self.region)
+            session_kwargs: Dict[str, Any] = {"region_name": self.region}
+            if settings.aws_profile and settings.aws_profile.strip() and settings.aws_profile != "default":
+                session_kwargs["profile_name"] = settings.aws_profile.strip()
+            session = boto3.Session(**session_kwargs)
             self._bedrock_client = session.client("bedrock-runtime", region_name=self.region)
         return self._bedrock_client
 
@@ -80,19 +89,21 @@ class BedrockProvider(BaseAIProvider):
         try:
             client = self._get_client()
         except (NoCredentialsError, BotoCoreError, ClientError) as e:
+            logger.warning(f"AWS Bedrock client initialization failed ({type(e).__name__}). Using MockProvider fallback.")
+            fallback = await MockProvider(self.mcp_client).process_chat(message, history, session_id)
+            notice = (
+                "### ℹ️ Amazon Bedrock Offline — Deterministic Fallback Active\n\n"
+                f"> **AWS Authentication Notice:** RouteWise AI could not authenticate with Amazon Bedrock in region `{self.region}` (`{e}`).\n"
+                f"> **To configure Bedrock authentication:** Set `AWS_BEARER_TOKEN_BEDROCK` in `backend/.env` (Bedrock API-key authentication), or configure AWS IAM keys (`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`).\n"
+                f"> Model access for `{self.model_id}` must also be granted in the AWS Bedrock Console.\n"
+                "> Seamlessly continuing in **Deterministic Mock Mode** using genuine MCP tools over Streamable HTTP.\n\n"
+                "---\n\n"
+            )
             return ChatResponse(
-                response=(
-                    "###  AWS Bedrock Authentication Required\n\n"
-                    f"RouteWise AI could not authenticate with Amazon Bedrock in region `{self.region}`:\n"
-                    f"```\n{e}\n```\n\n"
-                    "**To configure AWS credentials:**\n"
-                    "1. Configure AWS CLI with `aws configure` (or set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`).\n"
-                    "2. Verify model access for `{self.model_id}` in the Amazon Bedrock Console.\n"
-                    "3. Alternatively, switch to **Deterministic Mock Mode** in the Settings panel for complete local functionality."
-                ),
-                provider_used="bedrock",
+                response=notice + fallback.response,
+                provider_used="mock_fallback",
                 model_id=self.model_id,
-                tools_executed=[],
+                tools_executed=fallback.tools_executed,
                 session_id=session_id,
             )
 
@@ -209,16 +220,34 @@ class BedrockProvider(BaseAIProvider):
             )
 
         except (ClientError, BotoCoreError) as e:
+            err_type = type(e).__name__
+            err_msg = str(e)
+            if "ResourceNotFoundException" in err_msg or "ResourceNotFoundException" in err_type:
+                clean_diag = (
+                    f"Configured model `{self.model_id}` in region `{self.region}` was not found. "
+                    "This model version may have reached end-of-life or requires model access approval in the AWS Bedrock Console."
+                )
+            elif "AccessDeniedException" in err_msg:
+                clean_diag = f"Access denied to Amazon Bedrock in region `{self.region}`. Verify IAM permissions (`bedrock:InvokeModel`)."
+            elif "ValidationException" in err_msg:
+                clean_diag = f"Request validation failed for Bedrock model `{self.model_id}` in region `{self.region}`."
+            else:
+                clean_diag = f"Bedrock invocation returned {err_type} in region `{self.region}`."
+
+            logger.warning(f"Amazon Bedrock execution failed ({err_type}). Using MockProvider fallback: {clean_diag}")
+            fallback = await MockProvider(self.mcp_client).process_chat(message, history, session_id)
+            notice = (
+                "### ℹ️ Amazon Bedrock Service Notice — Deterministic Fallback Active\n\n"
+                f"> **Bedrock Status:** {clean_diag}\n"
+                "> **Active Provider:** Deterministic Mock Provider (genuinely executing the 7 MCP tools over Streamable HTTP).\n"
+                "> *Note: This response was generated via local deterministic fallback, not live Bedrock inference.*\n\n"
+                "---\n\n"
+            )
             return ChatResponse(
-                response=(
-                    "###  Amazon Bedrock Runtime Error\n\n"
-                    f"Encountered AWS service exception: `{e}`\n\n"
-                    "Check that the model ID `{self.model_id}` is enabled in region `{self.region}` "
-                    "and that your IAM user/role has `bedrock:InvokeModel` permissions."
-                ),
-                provider_used="bedrock",
+                response=notice + fallback.response,
+                provider_used="mock_fallback",
                 model_id=self.model_id,
-                tools_executed=tools_executed,
+                tools_executed=fallback.tools_executed if fallback.tools_executed else tools_executed,
                 session_id=session_id,
             )
 

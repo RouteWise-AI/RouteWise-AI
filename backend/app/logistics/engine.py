@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
+import uuid
 
 from .models import (
     ComparisonResult,
@@ -24,7 +25,7 @@ from .models import (
     ShipmentType,
     TransportMode,
 )
-from .sample_data import SAMPLE_JOURNEY_OPTIONS, get_options_for_route
+from .sample_data import SAMPLE_JOURNEY_OPTIONS, get_location, get_options_for_route, LOCATIONS
 
 # Mode-based per-kg surcharges above base allowance (5 kg)
 PER_KG_RATES = {
@@ -258,12 +259,18 @@ def compare_routes(
     if weight_kg <= 0:
         raise ValueError("Weight must be greater than zero")
 
-    candidates = get_options_for_route(origin, destination)
+    orig_loc = get_location(origin)
+    dest_loc = get_location(destination)
+    if not orig_loc:
+        raise ValueError(f"Unknown or unsupported origin location: '{origin}'.")
+    if not dest_loc:
+        raise ValueError(f"Unknown or unsupported destination location: '{destination}'.")
+    if orig_loc.city.lower() == dest_loc.city.lower():
+        raise ValueError("Origin and destination cannot be identical for intercity logistics.")
+
+    candidates = get_options_for_route(orig_loc.city, dest_loc.city)
     if not candidates:
-        # Fallback corridor matching for demonstration
-        candidates = [opt for opt in SAMPLE_JOURNEY_OPTIONS if opt.origin.lower() == origin.lower()]
-        if not candidates:
-            candidates = SAMPLE_JOURNEY_OPTIONS[:4]
+        raise ValueError(f"No candidate options available for corridor {orig_loc.city} -> {dest_loc.city}")
 
     evaluated_list: List[EvaluatedOption] = []
     max_cost_ref = max([opt.base_cost_inr * 2.5 for opt in candidates] + [budget_inr])
@@ -329,12 +336,24 @@ def compare_routes(
         )
         final_list = infeasible
 
+    run_id = f"run-cmp-{uuid.uuid4().hex[:10]}"
+    created_at = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
+
+    distance = candidates[0].distance_km if candidates else 0.0
+
     return ComparisonResult(
-        origin=origin,
-        destination=destination,
+        run_id=run_id,
+        created_at=created_at,
+        origin=orig_loc.city,
+        destination=dest_loc.city,
+        origin_id=orig_loc.id,
+        destination_id=dest_loc.id,
+        distance_km=distance,
         priority=priority,
         budget_inr=budget_inr,
         deadline_hours=deadline_hours,
+        weight_kg=weight_kg,
+        shipment_type=shipment_type,
         total_evaluated=len(evaluated_list),
         feasible_count=len(feasible),
         recommended_option=recommended,
@@ -379,11 +398,18 @@ def replan_journey(
     disruption_reason: str = "Simulated transit disruption",
 ) -> ReplanningResult:
     """Re-evaluate the journey after a disruption on the selected plan."""
-    # Find original option
-    all_options = get_options_for_route(origin, destination)
+    # Validate locations and retrieve corridor options
+    orig_loc = get_location(origin)
+    dest_loc = get_location(destination)
+    if not orig_loc or not dest_loc:
+        raise ValueError(f"Invalid corridor: '{origin}' -> '{destination}'.")
+    if orig_loc.city.lower() == dest_loc.city.lower():
+        raise ValueError("Origin and destination cannot be identical for intercity logistics.")
+
+    all_options = get_options_for_route(orig_loc.city, dest_loc.city)
     if not all_options:
-        all_options = SAMPLE_JOURNEY_OPTIONS
-    
+        raise ValueError(f"No options found for corridor {orig_loc.city} -> {dest_loc.city}")
+
     orig_opt = next((o for o in all_options if o.id == original_option_id), all_options[0])
 
     orig_cost = calculate_delivery_cost(orig_opt, weight_kg, shipment_type)
@@ -391,7 +417,7 @@ def replan_journey(
 
     # Disrupted state of the original option
     disruption = simulate_delay(orig_opt.id, delay_hours, is_cancelled, cost_increase_pct, disruption_reason)
-    disrupted_duration = orig_opt.base_duration_hours + delay_hours
+    disrupted_duration = round(orig_opt.base_duration_hours + delay_hours, 2)
     disrupted_deadline = check_delivery_deadline(orig_opt.departure_time, disrupted_duration, deadline_hours)
     
     disrupted_still_feasible = disrupted_deadline.is_feasible and not is_cancelled
@@ -464,16 +490,35 @@ def replan_journey(
     if revised_rec and revised_rec.option.mode == TransportMode.ROAD:
         remaining_risks.append("Highway transit remains vulnerable to ongoing coastal corridor congestion")
 
+    run_id = f"run-rpl-{uuid.uuid4().hex[:10]}"
+    created_at = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
+
     return ReplanningResult(
+        run_id=run_id,
+        created_at=created_at,
         original_option_id=orig_opt.id,
+        original_option_name=orig_opt.name,
+        original_carrier=orig_opt.carrier,
+        original_mode=orig_opt.mode,
+        origin=orig_loc.city,
+        destination=dest_loc.city,
+        origin_id=orig_loc.id,
+        destination_id=dest_loc.id,
+        budget_inr=budget_inr,
+        deadline_hours=deadline_hours,
         original_cost_inr=orig_cost.total_cost_inr,
         original_duration_hours=orig_opt.base_duration_hours,
         original_arrival=orig_deadline.estimated_arrival_time,
         disruption_applied=disruption,
+        baseline_duration_hours=orig_opt.base_duration_hours,
+        applicable_delay_hours=delay_hours,
         disrupted_duration_hours=disrupted_duration,
         disrupted_arrival=disrupted_deadline.estimated_arrival_time,
+        disrupted_margin_hours=disrupted_deadline.margin_hours,
+        disrupted_status=disrupted_deadline.status,
         disrupted_still_feasible=disrupted_still_feasible,
         revised_recommended_option=revised_rec,
+        is_revised_feasible=bool(revised_rec and revised_rec.constraints.overall_feasible),
         cost_delta_inr=cost_delta,
         duration_delta_hours=dur_delta,
         all_revised_options=all_candidates,

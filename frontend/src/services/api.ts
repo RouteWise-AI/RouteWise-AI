@@ -11,10 +11,73 @@ import type {
   SystemHealth,
 } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
+/**
+ * Determine the API Base URL.
+ * Supports both single-port forwarding (via Vite proxy) and dual-port forwarding (separate public backend URL).
+ *
+ * 1. Single-port forwarding (recommended):
+ *    Leave VITE_API_BASE_URL blank. Browser makes relative requests (/api/...) to the frontend origin,
+ *    and Vite's dev server reverse-proxies them to http://127.0.0.1:8001.
+ *
+ * 2. Dual-port forwarding:
+ *    Set VITE_API_BASE_URL to the forwarded backend URL (e.g. https://8001-xxxx.antigravity.run
+ *    or https://xxxx-8001.app.github.dev). The frontend and backend can have different public hostnames.
+ *
+ * 3. Localhost protection:
+ *    If the browser is accessed remotely (not on localhost/127.0.0.1) and VITE_API_BASE_URL points to
+ *    localhost or 127.0.0.1 (which the remote client cannot reach), it safely falls back to relative ''
+ *    to leverage Vite's proxy instead of failing with connection refused or mixed content errors.
+ */
+export function getApiBase(): string {
+  const envUrl = (import.meta.env.VITE_API_BASE_URL || '').trim();
+
+  // If no env variable is provided, always use relative path for Vite proxy
+  if (!envUrl) {
+    return '';
+  }
+
+  // Normalize: remove trailing slashes
+  let cleanUrl = envUrl.replace(/\/+$/, '');
+
+  // Strip trailing /api if present to prevent /api/api duplication with endpoints
+  if (cleanUrl.endsWith('/api')) {
+    cleanUrl = cleanUrl.slice(0, -4);
+  }
+
+  // Check if running in browser
+  if (typeof window !== 'undefined') {
+    const isLocalBrowser =
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+    // If accessing from a remote/forwarded origin, reject unreachable localhost/127.0.0.1 target
+    if (!isLocalBrowser && (cleanUrl.includes('localhost') || cleanUrl.includes('127.0.0.1'))) {
+      console.warn(
+        `[RouteWise API] Browser hostname is "${window.location.hostname}" but VITE_API_BASE_URL points to local address "${cleanUrl}". Falling back to relative Vite proxy to avoid unreachable host errors.`
+      );
+      return '';
+    }
+  }
+
+  return cleanUrl;
+}
+
+/**
+ * Build the full request URL without duplicate /api prefixes.
+ */
+export function buildApiUrl(endpoint: string): string {
+  const base = getApiBase();
+  if (!base) {
+    return endpoint;
+  }
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  if (base.endsWith('/api') && cleanEndpoint.startsWith('/api')) {
+    return `${base}${cleanEndpoint.slice(4)}`;
+  }
+  return `${base}${cleanEndpoint}`;
+}
 
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const url = `${API_BASE}${endpoint}`;
+  const url = buildApiUrl(endpoint);
   try {
     const res = await fetch(url, {
       ...options,

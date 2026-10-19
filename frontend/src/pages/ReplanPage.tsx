@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AlertOctagon,
   RefreshCw,
@@ -25,14 +25,27 @@ interface ReplanPageProps {
   setReplanResult: (res: ReplanningResult) => void;
 }
 
+const CANONICAL_CITIES = [
+  { value: 'Vijayawada', label: 'Vijayawada (BZA)' },
+  { value: 'Visakhapatnam', label: 'Visakhapatnam (VTZ)' },
+  { value: 'Hyderabad', label: 'Hyderabad (HYD)' },
+  { value: 'Bengaluru', label: 'Bengaluru (BLR)' },
+  { value: 'Chennai', label: 'Chennai (MAA)' },
+  { value: 'Mumbai', label: 'Mumbai (BOM)' },
+  { value: 'Pune', label: 'Pune (PNQ)' },
+  { value: 'Delhi', label: 'Delhi (DEL)' },
+  { value: 'Chandigarh', label: 'Chandigarh (IXC)' },
+  { value: 'Coimbatore', label: 'Coimbatore (CJB)' },
+];
+
 export const ReplanPage: React.FC<ReplanPageProps> = ({
   replanResult,
   setReplanResult,
 }) => {
   const { showSuccess, showError, showWarning } = useToast();
 
-  const [origin, setOrigin] = useState('Vijayawada');
-  const [destination, setDestination] = useState('Visakhapatnam');
+  const [origin, setOrigin] = useState(replanResult?.origin || 'Vijayawada');
+  const [destination, setDestination] = useState(replanResult?.destination || 'Visakhapatnam');
   const [delayHours, setDelayHours] = useState(2.0);
   const [isCancelled, setIsCancelled] = useState(false);
   const [costIncreasePct, setCostIncreasePct] = useState(0.0);
@@ -40,18 +53,38 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
   const [isReplanning, setIsReplanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Sync state if a new replan result is navigated from workspace
+  useEffect(() => {
+    if (replanResult?.origin) {
+      setOrigin(replanResult.origin);
+    }
+    if (replanResult?.destination) {
+      setDestination(replanResult.destination);
+    }
+  }, [replanResult?.origin, replanResult?.destination]);
+
+  const isIdenticalLocation = origin === destination;
+
   const handleExecuteReplan = async () => {
+    if (isIdenticalLocation) {
+      showError('Origin and destination cannot be identical for intercity logistics.');
+      return;
+    }
+
     setIsReplanning(true);
     setError(null);
     try {
-      const optionId = origin === 'Vijayawada' ? 'BZA-VTZ-RAIL-01' : origin === 'Hyderabad' ? 'HYD-BLR-RAIL-01' : 'BZA-VTZ-RAIL-01';
+      const optionId = replanResult?.original_option_id || '';
+      const budgetInr = replanResult?.budget_inr || 2500.0;
+      const deadlineHours = replanResult?.deadline_hours || 6.0;
+
       const data = await api.replanJourney({
         original_option_id: optionId,
         origin,
         destination,
         delay_hours: delayHours,
-        budget_inr: 2500.0,
-        deadline_hours: 6.0,
+        budget_inr: budgetInr,
+        deadline_hours: deadlineHours,
         weight_kg: 5.0,
         shipment_type: 'STANDARD',
         priority: 'BALANCED',
@@ -75,9 +108,29 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
   };
 
   const mapSegments = [
-    { from: origin, to: destination, mode: 'RAIL' as const, isDisrupted: true, isActive: true },
+    {
+      from: origin,
+      to: destination,
+      mode: (replanResult?.original_mode || 'RAIL') as any,
+      isDisrupted: true,
+      isActive: true,
+      optionName: replanResult?.original_option_name || 'Original Disrupted Route',
+      carrier: replanResult?.original_carrier,
+    },
     ...(replanResult?.revised_recommended_option
-      ? [{ from: origin, to: destination, mode: replanResult.revised_recommended_option.option.mode, isDisrupted: false, isActive: true }]
+      ? [
+          {
+            from: origin,
+            to: destination,
+            mode: replanResult.revised_recommended_option.option.mode,
+            isDisrupted: false,
+            isActive: true,
+            optionName: replanResult.revised_recommended_option.option.name,
+            carrier: replanResult.revised_recommended_option.option.carrier,
+            costInr: replanResult.revised_recommended_option.cost.total_cost_inr,
+            durationHours: replanResult.revised_recommended_option.deadline.estimated_duration_hours,
+          },
+        ]
       : []),
   ];
 
@@ -97,13 +150,22 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
 
         <button
           onClick={handleExecuteReplan}
-          disabled={isReplanning}
-          className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs flex items-center gap-2 cursor-pointer transition-all shadow-md shadow-amber-500/20"
+          disabled={isReplanning || isIdenticalLocation}
+          className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all shadow-md ${
+            isIdenticalLocation
+              ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+              : 'bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 cursor-pointer shadow-amber-500/20'
+          }`}
         >
           {isReplanning ? (
             <>
               <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
               Running MCP replan_journey...
+            </>
+          ) : isIdenticalLocation ? (
+            <>
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+              Select Different Cities
             </>
           ) : (
             <>
@@ -133,11 +195,11 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
                 onChange={(e) => setOrigin(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400"
               >
-                <option value="Vijayawada">Vijayawada (BZA)</option>
-                <option value="Hyderabad">Hyderabad (HYD)</option>
-                <option value="Chennai">Chennai (MAA)</option>
-                <option value="Mumbai">Mumbai (BOM)</option>
-                <option value="Delhi">Delhi (DEL)</option>
+                {CANONICAL_CITIES.map((c) => (
+                  <option key={`replan-orig-${c.value}`} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -148,14 +210,21 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
                 onChange={(e) => setDestination(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400"
               >
-                <option value="Visakhapatnam">Visakhapatnam (VTZ)</option>
-                <option value="Bengaluru">Bengaluru (BLR)</option>
-                <option value="Vijayawada">Vijayawada (BZA)</option>
-                <option value="Pune">Pune (PNQ)</option>
-                <option value="Chandigarh">Chandigarh (IXC)</option>
+                {CANONICAL_CITIES.map((c) => (
+                  <option key={`replan-dest-${c.value}`} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
+
+          {isIdenticalLocation && (
+            <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+              <span>Origin and destination cannot be identical for intercity logistics.</span>
+            </div>
+          )}
 
           <div className="space-y-3 text-xs pt-1">
             <div>
@@ -221,7 +290,7 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
             activeOrigin={origin}
             activeDestination={destination}
             segments={mapSegments}
-            height="230px"
+            height="380px"
           />
           <div className="text-[11px] text-slate-400 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
@@ -261,7 +330,7 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
             </div>
 
             <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80">
-              <span className="text-[11px] text-slate-400 block">Time vs Disrupted Train</span>
+              <span className="text-[11px] text-slate-400 block">Time vs Disrupted Plan</span>
               <span className="text-base font-bold text-cyan-400 flex items-center gap-1">
                 <ArrowDownRight className="w-4 h-4" />
                 {(replanResult.disrupted_duration_hours - (replanResult.revised_recommended_option?.deadline.estimated_duration_hours || 0)).toFixed(1)} hrs saved
@@ -277,9 +346,15 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
 
             <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80">
               <span className="text-[11px] text-slate-400 block">Revised Feasibility</span>
-              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1 mt-1">
-                <CheckCircle2 className="w-4 h-4" /> Restored to On-Time
-              </span>
+              {replanResult.is_revised_feasible !== false && replanResult.revised_recommended_option ? (
+                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1 mt-1">
+                  <CheckCircle2 className="w-4 h-4" /> Restored to On-Time
+                </span>
+              ) : (
+                <span className="text-xs font-bold text-rose-400 flex items-center gap-1 mt-1">
+                  <XCircle className="w-4 h-4" /> No Feasible Plan
+                </span>
+              )}
             </div>
           </div>
 
@@ -295,8 +370,12 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
               </div>
 
               <div>
-                <h4 className="text-base font-bold text-white">Andhra Express Freight Rail</h4>
-                <p className="text-xs text-slate-400">Vande Cargo (Option ID: {replanResult.original_option_id})</p>
+                <h4 className="text-base font-bold text-white">
+                  {replanResult.original_option_name || 'Baseline Selected Option'}
+                </h4>
+                <p className="text-xs text-slate-400">
+                  {replanResult.original_carrier || 'Primary Carrier'} (Option ID: {replanResult.original_option_id})
+                </p>
               </div>
 
               <div className="space-y-2 text-xs">
@@ -326,7 +405,9 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
 
               <div>
                 <h4 className="text-base font-bold text-white">Bottleneck Injected</h4>
-                <p className="text-xs text-slate-300">+{replanResult.disruption_applied.delay_hours}h delay applied to Rail</p>
+                <p className="text-xs text-slate-300">
+                  +{replanResult.disruption_applied.delay_hours}h delay applied to {replanResult.original_mode ? String(replanResult.original_mode).replace('_', ' ') : 'Transit'}
+                </p>
               </div>
 
               <div className="space-y-2 text-xs">
@@ -340,7 +421,15 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
                 </div>
                 <div className="flex justify-between py-1">
                   <span className="text-slate-400">Deadline Status:</span>
-                  <span className="text-rose-400 font-semibold">Late by 12 mins (misses window)</span>
+                  <span className="text-rose-400 font-semibold">
+                    {replanResult.disrupted_status || (
+                      replanResult.disrupted_margin_hours !== undefined
+                        ? (replanResult.disrupted_margin_hours < 0
+                            ? `Late by ${Math.round(Math.abs(replanResult.disrupted_margin_hours) * 60)} mins (misses window)`
+                            : `Within window (${replanResult.disrupted_margin_hours.toFixed(1)}h margin)`)
+                        : 'Deadline Violated'
+                    )}
+                  </span>
                 </div>
               </div>
             </div>
@@ -351,15 +440,17 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
                 <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">
                   STAGE 3: Autonomous Replan
                 </span>
-                <span className="text-xs text-emerald-400 font-semibold">Restored</span>
+                <span className={`text-xs font-semibold ${replanResult.is_revised_feasible !== false && replanResult.revised_recommended_option ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {replanResult.is_revised_feasible !== false && replanResult.revised_recommended_option ? 'Restored' : 'Unfeasible'}
+                </span>
               </div>
 
               <div>
                 <h4 className="text-base font-bold text-white">
-                  {replanResult.revised_recommended_option?.option.name || 'Emergency Plan'}
+                  {replanResult.revised_recommended_option?.option.name || 'No Viable Alternative'}
                 </h4>
                 <p className="text-xs text-cyan-400">
-                  Carrier: {replanResult.revised_recommended_option?.option.carrier}
+                  Carrier: {replanResult.revised_recommended_option?.option.carrier || 'N/A'}
                 </p>
               </div>
 
@@ -367,19 +458,21 @@ export const ReplanPage: React.FC<ReplanPageProps> = ({
                 <div className="flex justify-between py-1 border-b border-cyan-500/10">
                   <span className="text-slate-400">New Transit:</span>
                   <span className="text-white font-bold">
-                    {replanResult.revised_recommended_option?.deadline.estimated_duration_hours} hrs
+                    {replanResult.revised_recommended_option?.deadline.estimated_duration_hours ?? 'N/A'} hrs
                   </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-cyan-500/10">
-                  <span className="text-slate-400">Guaranteed Arrival:</span>
+                  <span className="text-slate-400">Estimated Arrival:</span>
                   <span className="text-cyan-300">
-                    {replanResult.revised_recommended_option?.deadline.estimated_arrival_time}
+                    {replanResult.revised_recommended_option?.deadline.estimated_arrival_time || 'N/A'}
                   </span>
                 </div>
                 <div className="flex justify-between py-1">
                   <span className="text-slate-400">New Cost:</span>
                   <span className="text-emerald-400 font-bold">
-                    ₹{replanResult.revised_recommended_option?.cost.total_cost_inr.toLocaleString()}
+                    {replanResult.revised_recommended_option
+                      ? `₹${replanResult.revised_recommended_option.cost.total_cost_inr.toLocaleString()}`
+                      : 'N/A'}
                   </span>
                 </div>
               </div>

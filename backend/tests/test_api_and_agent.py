@@ -69,7 +69,7 @@ async def test_end_to_end_agent_and_mcp_flow():
             session_id="e2e-session",
         )
         chat_resp = await agent_orchestrator.handle_chat(chat_req)
-        assert chat_resp.provider_used == "mock"
+        assert chat_resp.provider_used in ("mock", "mock_fallback")
         assert len(chat_resp.tools_executed) == 1
         assert chat_resp.tools_executed[0]["tool"] == "compare_routes"
         assert "Vande Cargo" in chat_resp.response or "Andhra Express" in chat_resp.response

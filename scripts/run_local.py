@@ -82,6 +82,7 @@ def main():
             "127.0.0.1",
             "--port",
             "8001",
+            "--reload",
         ],
         cwd=str(ROOT_DIR / "backend"),
         env=env,
@@ -92,7 +93,7 @@ def main():
     # 3. Start Frontend (Port 5173)
     print("[3/3] Starting React + TypeScript + Vite Frontend on port 5173...")
     frontend_proc = subprocess.Popen(
-        [NPM_CMD, "run", "dev", "--", "--host", "127.0.0.1"],
+        [NPM_CMD, "run", "dev", "--", "--host", "0.0.0.0"],
         cwd=str(ROOT_DIR / "frontend"),
         env=env,
         shell=(sys.platform == "win32"),

@@ -42,14 +42,26 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origin_regex=r".*",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS configuration - dynamically permits Vercel domains, configured CORS_ORIGINS, and local dev
+cors_env = (settings.cors_origins or "").strip()
+if cors_env and cors_env != "*":
+    explicit_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=explicit_origins,
+        allow_origin_regex=r"^https://.*\.vercel\.app$",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r".*",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Mount API routes
 app.include_router(router)
@@ -62,7 +74,18 @@ async def root():
         "tagline": settings.tagline,
         "version": settings.app_version,
         "documentation": "/docs",
-        "health": "/api/health",
+        "health": "/health",
+        "api_health": "/api/health",
+    }
+
+
+@app.get("/health")
+async def health():
+    """Direct root health endpoint for Render and external uptime monitoring."""
+    return {
+        "status": "healthy",
+        "service": settings.app_name,
+        "version": settings.app_version,
     }
 
 

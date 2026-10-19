@@ -35,7 +35,7 @@ from app.logistics.models import (
     ShipmentType,
     TransportMode,
 )
-from app.logistics.sample_data import SAMPLE_JOURNEY_OPTIONS, get_options_for_route
+from app.logistics.sample_data import SAMPLE_JOURNEY_OPTIONS, get_options_for_route, get_option_by_id
 
 
 def create_mcp_server() -> MCPServer:
@@ -88,7 +88,7 @@ def create_mcp_server() -> MCPServer:
         declared_value_inr: Optional[float] = None,
         disruption_cost_inr: float = 0.0,
     ) -> str:
-        opt = next((o for o in SAMPLE_JOURNEY_OPTIONS if o.id == option_id), None)
+        opt = get_option_by_id(option_id)
         if not opt:
             return json.dumps({"error": f"Option ID '{option_id}' not found in registered corridors"})
 
@@ -187,7 +187,7 @@ def create_mcp_server() -> MCPServer:
         shipment_type: str = "STANDARD",
         preferred_modes: Optional[List[str]] = None,
     ) -> str:
-        opt = next((o for o in SAMPLE_JOURNEY_OPTIONS if o.id == option_id), None)
+        opt = get_option_by_id(option_id)
         if not opt:
             return json.dumps({"error": f"Option ID '{option_id}' not found"})
 
@@ -277,8 +277,8 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    host = os.getenv("MCP_SERVER_HOST", "127.0.0.1")
-    port = int(os.getenv("MCP_SERVER_PORT", "8000"))
+    host = os.getenv("HOST", os.getenv("MCP_SERVER_HOST", "0.0.0.0" if "PORT" in os.environ else "127.0.0.1"))
+    port = int(os.getenv("PORT", os.getenv("MCP_SERVER_PORT", "8000")))
     print(f"Starting RouteWise MCP Server on http://{host}:{port} (MCP endpoint: {os.getenv('MCP_SERVER_PATH', '/mcp')})")
     uvicorn.run(app, host=host, port=port, log_level="info")
 

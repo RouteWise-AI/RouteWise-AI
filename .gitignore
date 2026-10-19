@@ -36,11 +36,20 @@ dist-ssr/
 
 # Environment & Secrets
 .env
-.env.production
-.env.local
+.env.*
+*.env
+backend/.env
+frontend/.env
 *.pem
 *.key
 aws_credentials.json
+
+# Screenshots & Local Test Artifacts
+screenshot_*.png
+*.png.metadata.json
+
+# Vercel & Deployments
+.vercel
 
 # IDE & OS
 .vscode/

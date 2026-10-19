@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Compass,
   Sliders,
@@ -15,6 +15,8 @@ import {
   CheckCircle2,
   TrendingDown,
   MapPin,
+  RefreshCw,
+  Info,
 } from 'lucide-react';
 import type {
   ComparisonResult,
@@ -44,7 +46,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   initialResult,
   setGlobalComparisonResult,
 }) => {
-  const { showSuccess, showError, showWarning } = useToast();
+  const { showSuccess, showError, showWarning, showInfo } = useToast();
 
   // Input form state
   const [origin, setOrigin] = useState('Vijayawada');
@@ -60,11 +62,28 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ComparisonResult | null>(initialResult || null);
 
+  // Active request race condition guard
+  const activeRequestIdRef = useRef<number>(0);
+
   // Disruption simulation quick-controls
   const [simDelayHours, setSimDelayHours] = useState(2.0);
   const [isSimulatingReplan, setIsSimulatingReplan] = useState(false);
 
-  // Preset loaders for all 6 corridors + stress test
+  // Decision consistency invariant: check if displayed result matches current active form constraints
+  const isStale = Boolean(
+    result &&
+      (result.origin !== origin ||
+        result.destination !== destination ||
+        result.budget_inr !== budgetInr ||
+        result.deadline_hours !== deadlineHours ||
+        (result.weight_kg !== undefined && result.weight_kg !== weightKg) ||
+        (result.shipment_type !== undefined && result.shipment_type !== shipmentType) ||
+        result.priority !== priority)
+  );
+
+  const isIdenticalLocation = origin === destination;
+
+  // Preset loaders for all corridors + stress test
   const loadPrimaryDemo = () => {
     setOrigin('Vijayawada');
     setDestination('Visakhapatnam');
@@ -74,6 +93,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     setShipmentType('STANDARD');
     setPriority('DEADLINE_CRITICAL');
     setError(null);
+    showInfo('Loaded Coastal Demo inputs. Click "Compare Options" to calculate.');
   };
 
   const loadInterstateDemo = () => {
@@ -85,6 +105,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     setShipmentType('STANDARD');
     setPriority('BALANCED');
     setError(null);
+    showInfo('Loaded Tech Trunk inputs. Click "Compare Options" to calculate.');
   };
 
   const loadMumbaiPuneDemo = () => {
@@ -96,6 +117,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     setShipmentType('EXPRESS');
     setPriority('FASTEST');
     setError(null);
+    showInfo('Loaded Expressway Demo inputs. Click "Compare Options" to calculate.');
   };
 
   const loadDelhiChandigarhDemo = () => {
@@ -107,6 +129,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     setShipmentType('STANDARD');
     setPriority('CHEAPEST');
     setError(null);
+    showInfo('Loaded Northern Corridor inputs. Click "Compare Options" to calculate.');
   };
 
   const loadChennaiCoimbatoreDemo = () => {
@@ -118,6 +141,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     setShipmentType('STANDARD');
     setPriority('BALANCED');
     setError(null);
+    showInfo('Loaded Industrial Corridor inputs. Click "Compare Options" to calculate.');
   };
 
   const loadHonestRefusalDemo = () => {
@@ -129,11 +153,18 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     setShipmentType('STANDARD');
     setPriority('BALANCED');
     setError(null);
+    showWarning('Loaded Infeasible Stress Test inputs (₹1,500 / 3h). Click "Compare Options" to test honest refusal.');
   };
 
   const handleCompare = async () => {
+    if (origin === destination) {
+      showError('Origin and destination cannot be identical for intercity logistics.');
+      return;
+    }
+    const requestId = ++activeRequestIdRef.current;
     setIsLoading(true);
     setError(null);
+
     try {
       const data = await api.compareRoutes({
         origin,
@@ -144,40 +175,51 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
         shipment_type: shipmentType,
         priority: priority,
       });
+
+      // Discard response if a newer comparison request was initiated
+      if (requestId !== activeRequestIdRef.current) {
+        return;
+      }
+
       setResult(data);
       setGlobalComparisonResult(data);
+
       if (data.has_feasible_solution && data.recommended_option) {
-        showSuccess(`Optimal option selected: ${data.recommended_option.option.name}`);
+        showSuccess(`Run ${data.run_id || 'complete'}: Optimal carrier selected: ${data.recommended_option.option.name}`);
       } else {
-        showWarning('No options meet all hard constraints — honest refusal report returned.');
+        showWarning('Honest Refusal: No corridor options satisfy every hard constraint.');
       }
     } catch (err: any) {
-      const msg = err.message || 'Failed to compare options via MCP';
-      setError(msg);
-      showError(msg);
+      if (requestId === activeRequestIdRef.current) {
+        const msg = err.message || 'Failed to compare options via MCP';
+        setError(msg);
+        showError(msg);
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === activeRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
   const handleQuickReplan = async () => {
-    if (!result?.recommended_option) return;
+    if (!result?.recommended_option || isStale) return;
     setIsSimulatingReplan(true);
     try {
       const replanData = await api.replanJourney({
         original_option_id: result.recommended_option.option.id,
-        origin,
-        destination,
+        origin: result.origin,
+        destination: result.destination,
         delay_hours: simDelayHours,
-        budget_inr: budgetInr,
-        deadline_hours: deadlineHours,
-        weight_kg: weightKg,
-        shipment_type: shipmentType,
-        priority: priority,
-        disruption_reason: `Simulated track/highway congestion on ${result.recommended_option.option.name}`,
+        budget_inr: result.budget_inr,
+        deadline_hours: result.deadline_hours,
+        weight_kg: result.weight_kg || weightKg,
+        shipment_type: result.shipment_type || shipmentType,
+        priority: result.priority || priority,
+        disruption_reason: `Simulated bottleneck delay on ${result.recommended_option.option.name}`,
       });
       onReplanResult(replanData);
-      showWarning(`Disruption injected (+${simDelayHours}h delay). Replanning journey...`);
+      showWarning(`Disruption applied (+${simDelayHours}h delay). Opening replanning engine...`);
       onNavigateToReplan();
     } catch (err: any) {
       showError(`Replan error: ${err.message}`);
@@ -254,7 +296,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
             className="text-xs px-2.5 py-1.5 rounded-lg bg-rose-500/10 text-rose-300 border border-rose-500/20 hover:bg-rose-500/20 transition-all cursor-pointer font-medium"
             title="3h deadline, ₹1,500 budget (Stress test honest refusal)"
           >
-            ⚠️ Stress Infeasible
+            ⚠️ Stress Infeasible (₹1.5k / 3h)
           </button>
         </div>
       </div>
@@ -283,7 +325,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
                   >
                     {cityOptions.map((c) => (
-                      <option key={c.value} value={c.value}>
+                      <option key={`orig-${c.value}`} value={c.value}>
                         {c.label}
                       </option>
                     ))}
@@ -298,13 +340,20 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
                   >
                     {cityOptions.map((c) => (
-                      <option key={c.value} value={c.value}>
+                      <option key={`dest-${c.value}`} value={c.value}>
                         {c.label}
                       </option>
                     ))}
                   </select>
                 </div>
               </div>
+
+              {isIdenticalLocation && (
+                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>Origin and destination cannot be identical for intercity logistics.</span>
+                </div>
+              )}
 
               {/* Budget & Deadline */}
               <div className="grid grid-cols-2 gap-3">
@@ -397,13 +446,29 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
             {/* Action Trigger */}
             <button
               onClick={handleCompare}
-              disabled={isLoading}
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
+              disabled={isLoading || isIdenticalLocation}
+              className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all ${
+                isIdenticalLocation
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                  : isStale
+                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20 animate-pulse cursor-pointer'
+                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30 cursor-pointer'
+              }`}
             >
               {isLoading ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                   Invoking MCP compare_routes...
+                </>
+              ) : isIdenticalLocation ? (
+                <>
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  Select Different Cities to Compare
+                </>
+              ) : isStale ? (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  Recalculate Options (Inputs Changed)
                 </>
               ) : (
                 <>
@@ -420,46 +485,136 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
             )}
           </div>
 
-          {/* Interactive Route Map Card */}
+          {/* Active Corridor Logistics Overview */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-xl">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <span className="text-xs font-bold text-white flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-                Corridor Map ({origin} → {destination})
+                Active Corridor Hubs
               </span>
-              <span className="text-[10px] text-slate-400 font-mono">OpenStreetMap</span>
+              <span className="text-[10px] text-cyan-400 font-mono">Pydantic Canonical</span>
             </div>
-            <RouteMap
-              activeOrigin={origin}
-              activeDestination={destination}
-              height="260px"
-            />
-            <MapLegend />
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+                <span className="text-[10px] text-slate-500 block uppercase font-mono">Origin Hub</span>
+                <span className="text-white font-semibold">{origin}</span>
+              </div>
+              <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+                <span className="text-[10px] text-slate-500 block uppercase font-mono">Destination Hub</span>
+                <span className="text-white font-semibold">{destination}</span>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Interactive Leaflet viewport active in main command section with live corridor topology and carrier alternatives.
+            </p>
           </div>
         </div>
 
         {/* Right Column: Execution Output & Recommendations (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
+          {/* CRITICAL DECISION-CONSISTENCY ALERT: If form inputs changed, display prominent banner */}
+          {isStale && result && (
+            <div className="bg-amber-950/40 border-2 border-amber-500/60 rounded-2xl p-4 flex items-start gap-3 text-amber-200 shadow-xl">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-xs flex-1">
+                <div className="font-bold text-sm text-white">Inputs Changed — Recalculation Required</div>
+                <p className="text-amber-300/90 leading-relaxed">
+                  You modified constraints to <strong className="text-white">{origin} → {destination} (₹{budgetInr.toLocaleString()}, {deadlineHours}h)</strong>.
+                  The displayed plan below is from a previous run (<strong className="text-slate-300">{result.origin} → {result.destination}, ₹{result.budget_inr.toLocaleString()}, {result.deadline_hours}h</strong>; Run ID: <span className="font-mono text-cyan-300">{result.run_id || 'legacy'}</span>).
+                </p>
+                <div className="pt-2 flex items-center gap-2">
+                  <button
+                    onClick={handleCompare}
+                    disabled={isLoading}
+                    className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow transition-all"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" /> Recalculate Now
+                  </button>
+                  <span className="text-[11px] text-amber-400/80">Previous results are disabled until recalculated</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {isLoading ? (
             <ComparisonSkeleton />
           ) : !result ? (
-            <div className="bg-slate-900/30 border border-dashed border-slate-800 rounded-2xl p-12 text-center space-y-4">
-              <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-cyan-400 flex items-center justify-center mx-auto">
-                <Compass className="w-6 h-6 animate-pulse" />
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-cyan-400" />
+                    Selected Corridor Map: {origin} → {destination}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Terminal hub coordinates validated. Click "Compare Corridor" to evaluate carrier alternatives.
+                  </p>
+                </div>
+                <button
+                  onClick={handleCompare}
+                  disabled={isLoading || isIdenticalLocation}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-blue-600/30 cursor-pointer transition-all shrink-0"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" /> Compare Corridor
+                </button>
               </div>
-              <h3 className="text-base font-semibold text-white">No Active Comparison Computed</h3>
-              <p className="text-sm text-slate-400 max-w-md mx-auto">
-                Configure your shipment requirements on the left, or click <strong className="text-cyan-300">⭐ Coastal (BZA → VTZ)</strong> above to trigger a real MCP protocol query.
-              </p>
-              <button
-                onClick={handleCompare}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700 cursor-pointer"
-              >
-                Execute Selected Corridor
-              </button>
+
+              <RouteMap
+                activeOrigin={origin}
+                activeDestination={destination}
+                height="400px"
+              />
+              <MapLegend />
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs">
+                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+                  <span className="text-[11px] text-slate-400 block">Origin Hub</span>
+                  <strong className="text-cyan-300 font-semibold">{origin} Terminal</strong>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+                  <span className="text-[11px] text-slate-400 block">Destination Hub</span>
+                  <strong className="text-purple-300 font-semibold">{destination} Terminal</strong>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+                  <span className="text-[11px] text-slate-400 block">Target Budget & Window</span>
+                  <strong className="text-emerald-400 font-semibold">₹{budgetInr.toLocaleString()} / {deadlineHours}h</strong>
+                </div>
+              </div>
             </div>
           ) : (
-            <>
+            <div className={isStale ? 'opacity-40 pointer-events-none filter grayscale transition-all' : 'transition-all space-y-6'}>
+              {/* Evaluated Multimodal Corridor Map with Active Carrier Highlighting */}
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-3 shadow-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-cyan-400" />
+                      Multimodal Corridor Map: {result.origin} → {result.destination}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Recommended carrier path highlighted. Click any evaluated track for carrier and cost breakdown.
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">Esri Basemap</span>
+                </div>
+                <RouteMap
+                  activeOrigin={result.origin}
+                  activeDestination={result.destination}
+                  segments={result.alternatives.map((alt) => ({
+                    from: result.origin,
+                    to: result.destination,
+                    mode: alt.option.mode,
+                    isActive: alt.is_recommended,
+                    optionName: alt.option.name,
+                    carrier: alt.option.carrier,
+                    costInr: alt.cost.total_cost_inr,
+                    durationHours: alt.deadline.estimated_duration_hours,
+                  }))}
+                  height="400px"
+                />
+                <MapLegend />
+              </div>
+
               {/* Executive Recommendation Banner */}
               {result.has_feasible_solution && result.recommended_option ? (
                 <div className="bg-gradient-to-br from-blue-950/70 via-slate-900 to-indigo-950/70 border border-blue-500/40 rounded-2xl p-6 space-y-5 shadow-xl relative overflow-hidden">
@@ -470,9 +625,14 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                       </span>
                       <ModeBadge mode={result.recommended_option.option.mode} />
                     </div>
-                    <span className="text-xs text-slate-400">
-                      Score: <strong className="text-cyan-300">{result.recommended_option.score.toFixed(3)}</strong>
-                    </span>
+                    <div className="text-right">
+                      <span className="text-[10px] font-mono text-slate-400 block">
+                        Run ID: <strong className="text-cyan-300">{result.run_id || 'verified'}</strong>
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        Score: <strong className="text-cyan-300">{result.recommended_option.score.toFixed(3)}</strong>
+                      </span>
+                    </div>
                   </div>
 
                   <div>
@@ -481,6 +641,8 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
                       Carrier: <span className="text-slate-200 font-medium">{result.recommended_option.option.carrier}</span>
+                      <span className="mx-2 text-slate-600">|</span>
+                      <span className="text-[11px] text-slate-500">Sample carrier profile</span>
                     </p>
                   </div>
 
@@ -491,6 +653,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                       <span className="text-lg font-bold text-emerald-400">
                         ₹{result.recommended_option.cost.total_cost_inr.toLocaleString()}
                       </span>
+                      <span className="text-[9px] text-slate-500 block">Simulated estimate</span>
                     </div>
 
                     <div>
@@ -498,6 +661,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                       <span className="text-lg font-bold text-white">
                         {result.recommended_option.deadline.estimated_duration_hours} hrs
                       </span>
+                      <span className="text-[9px] text-slate-500 block">Estimated duration</span>
                     </div>
 
                     <div>
@@ -511,10 +675,11 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                     </div>
 
                     <div>
-                      <span className="text-[11px] text-slate-400 block">Reliability</span>
+                      <span className="text-[11px] text-slate-400 block">Reliability Assumption</span>
                       <span className="text-lg font-bold text-cyan-300">
                         {Math.round(result.recommended_option.option.reliability_score * 100)}%
                       </span>
+                      <span className="text-[9px] text-slate-500 block">Illustrative score</span>
                     </div>
                   </div>
 
@@ -530,7 +695,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                       <Flame className="w-5 h-5 text-amber-400 shrink-0" />
                       <div>
                         <div className="text-xs font-semibold text-white">Simulate Bottleneck / Delay</div>
-                        <div className="text-[11px] text-slate-400">Inject unexpected transit delay to trigger replanner</div>
+                        <div className="text-[11px] text-slate-400">Inject unexpected delay on this selected plan</div>
                       </div>
                     </div>
 
@@ -538,7 +703,8 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                       <select
                         value={simDelayHours}
                         onChange={(e) => setSimDelayHours(parseFloat(e.target.value))}
-                        className="bg-slate-950 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none"
+                        disabled={isStale}
+                        className="bg-slate-950 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none disabled:opacity-50"
                       >
                         <option value={1.5}>+1.5 Hours Delay</option>
                         <option value={2.0}>+2.0 Hours Delay</option>
@@ -547,8 +713,8 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
 
                       <button
                         onClick={handleQuickReplan}
-                        disabled={isSimulatingReplan}
-                        className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-all"
+                        disabled={isSimulatingReplan || isStale}
+                        className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 font-bold text-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-all"
                       >
                         {isSimulatingReplan ? 'Replanning...' : 'Trigger Replan'}
                         <ArrowRight className="w-3.5 h-3.5" />
@@ -559,9 +725,16 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
               ) : (
                 /* Honest Refusal Card */
                 <div className="bg-rose-950/30 border border-rose-500/40 rounded-2xl p-6 space-y-4">
-                  <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
-                    <ShieldAlert className="w-5 h-5" />
-                    Honest Infeasibility Report
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
+                      <ShieldAlert className="w-5 h-5" />
+                      Honest Infeasibility Report
+                    </div>
+                    {result.run_id && (
+                      <span className="text-[10px] font-mono text-rose-300/80">
+                        Run ID: {result.run_id}
+                      </span>
+                    )}
                   </div>
                   <h3 className="text-xl font-extrabold text-white">
                     No Sample Corridor Options Meet All Hard Constraints
@@ -583,7 +756,8 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                   </h4>
                   <button
                     onClick={onNavigateToComparison}
-                    className="text-xs text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1 cursor-pointer"
+                    disabled={isStale}
+                    className="text-xs text-cyan-400 hover:text-cyan-300 disabled:opacity-40 font-medium flex items-center gap-1 cursor-pointer"
                   >
                     View Side-by-Side Breakdown & Radar <ArrowRight className="w-3.5 h-3.5" />
                   </button>
@@ -634,7 +808,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                   ))}
                 </div>
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>

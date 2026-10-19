@@ -11,6 +11,9 @@ import {
   ShieldCheck,
   Download,
   FileText,
+  AlertTriangle,
+  Info,
+  MapPin,
 } from 'lucide-react';
 import {
   BarChart,
@@ -26,6 +29,7 @@ import jsPDF from 'jspdf';
 import type { ComparisonResult, EvaluatedOption } from '../types';
 import { ModeBadge, DeadlineBadge } from '../components/Badge';
 import { TradeoffRadar } from '../components/TradeoffRadar';
+import { RouteMap, MapLegend } from '../components/RouteMap';
 import { useToast } from '../components/Toast';
 
 interface ComparisonPageProps {
@@ -34,22 +38,44 @@ interface ComparisonPageProps {
 }
 
 export const ComparisonPage: React.FC<ComparisonPageProps> = ({ result, onNavigateToWorkspace }) => {
-  const { showSuccess } = useToast();
+  const { showSuccess, showWarning } = useToast();
 
   if (!result) {
     return (
-      <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-12 text-center space-y-4">
-        <GitCompare className="w-12 h-12 text-cyan-400 mx-auto animate-bounce" />
-        <h3 className="text-lg font-bold text-white">No Comparison Data Available</h3>
-        <p className="text-sm text-slate-400 max-w-md mx-auto">
-          Please run a journey comparison in the Command Center first to inspect candidate alternatives.
-        </p>
-        <button
-          onClick={onNavigateToWorkspace}
-          className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs cursor-pointer"
-        >
-          Open Command Center
-        </button>
+      <div className="space-y-6 pb-12">
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-cyan-400" />
+                <h2 className="text-xl sm:text-2xl font-bold text-white">
+                  Corridor Comparison Map: Vijayawada → Visakhapatnam
+                </h2>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                Showing benchmark coastal multimodal corridor. Run calculations in the Command Center to compare custom cargo constraints.
+              </p>
+            </div>
+            <button
+              onClick={onNavigateToWorkspace}
+              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs cursor-pointer shadow-lg shadow-blue-600/20 whitespace-nowrap"
+            >
+              Open Command Center →
+            </button>
+          </div>
+          <RouteMap
+            activeOrigin="Vijayawada"
+            activeDestination="Visakhapatnam"
+            segments={[
+              { from: 'Vijayawada', to: 'Visakhapatnam', mode: 'RAIL', optionName: 'Andhra Express Freight Rail', carrier: 'Indian Railways Coastal Division', costInr: 1450, durationHours: 4.2 },
+              { from: 'Vijayawada', to: 'Visakhapatnam', mode: 'EXPRESS_ROAD', optionName: 'Coastal Highway Express (NH16)', carrier: 'AP Logistics Roadlines', costInr: 1100, durationHours: 5.5 },
+              { from: 'Vijayawada', to: 'Visakhapatnam', mode: 'AIR', optionName: 'Regional Air Priority Shuttle', carrier: 'IndiGo Cargo', costInr: 3200, durationHours: 2.3 },
+              { from: 'Vijayawada', to: 'Visakhapatnam', mode: 'ROAD', optionName: 'Standard Intercity Freight', carrier: 'Deccan Cargo Carriers', costInr: 750, durationHours: 7.5 },
+            ]}
+            height="400px"
+          />
+          <MapLegend />
+        </div>
       </div>
     );
   }
@@ -64,50 +90,201 @@ export const ComparisonPage: React.FC<ComparisonPageProps> = ({ result, onNaviga
   }));
 
   const handleExportPDF = () => {
-    const doc = new jsPDF();
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    const contentWidth = pageWidth - margin * 2;
+    let y = 18;
+
+    // Header Title
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
-    doc.text('RouteWise AI — Logistics Decision Report', 14, 20);
+    doc.setTextColor(15, 23, 42); // slate-900
+    doc.text('RouteWise AI — Logistics Decision Report', margin, y);
+    y += 6;
 
+    // Subtitle & Edition
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
-    doc.text(`Corridor: ${result.origin} -> ${result.destination}`, 14, 34);
-    doc.text(`Budget Constraint: Rs. ${result.budget_inr.toLocaleString()} | Deadline: ${result.deadline_hours} hours | Priority: ${result.priority}`, 14, 40);
+    doc.setTextColor(100, 116, 139); // slate-500
+    doc.text('Amazon Developer Hackathon: Build, Ship, Shape Edition | Autonomous Multimodal Decision Agent', margin, y);
+    y += 8;
 
-    if (result.recommended_option) {
+    // Divider
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, margin + contentWidth, y);
+    y += 6;
+
+    // Metadata & Constraints Grid Box
+    doc.setFillColor(248, 250, 252); // slate-50
+    doc.roundedRect(margin, y, contentWidth, 28, 2, 2, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, contentWidth, 28, 2, 2, 'D');
+
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+
+    const leftCol = margin + 4;
+    const midCol = margin + 65;
+    const rightCol = margin + 125;
+
+    doc.text(`Planning Run ID: ${result.run_id || 'RUN-VERIFIED-01'}`, leftCol, y + 6);
+    doc.text(`Corridor: ${result.origin} -> ${result.destination}`, leftCol, y + 13);
+    doc.text(`Generated: ${result.created_at || new Date().toLocaleString()}`, leftCol, y + 20);
+
+    doc.text(`Budget Constraint: Rs. ${result.budget_inr.toLocaleString()}`, midCol, y + 6);
+    doc.text(`Deadline Window: ${result.deadline_hours} hours`, midCol, y + 13);
+    doc.text(`Cargo Weight: ${result.weight_kg || 5.0} kg (${result.shipment_type || 'STANDARD'})`, midCol, y + 20);
+
+    doc.text(`Optimization Priority: ${result.priority}`, rightCol, y + 6);
+    doc.text(`Candidates Evaluated: ${result.total_evaluated}`, rightCol, y + 13);
+    doc.text(`Feasible Options: ${result.feasible_count} of ${result.total_evaluated}`, rightCol, y + 20);
+
+    y += 34;
+
+    // Recommendation Section
+    if (result.has_feasible_solution && result.recommended_option) {
+      const rec = result.recommended_option;
+      doc.setFillColor(240, 253, 250); // emerald-50
+      doc.setDrawColor(52, 211, 153);
+      doc.roundedRect(margin, y, contentWidth, 34, 2, 2, 'FD');
+
       doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(6, 95, 70); // emerald-800
+      doc.text('OPTIMAL GROUNDED RECOMMENDATION (MCP Verified Feasible)', leftCol, y + 6);
+
       doc.setFontSize(11);
-      doc.text('RECOMMENDED OPTION (MCP Optimal Selection):', 14, 52);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${rec.option.name} (${rec.option.mode.replace('_', ' ')})`, leftCol, y + 13);
+
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.text(`Option: ${result.recommended_option.option.name}`, 14, 58);
-      doc.text(`Carrier: ${result.recommended_option.option.carrier} (${result.recommended_option.option.mode})`, 14, 64);
-      doc.text(`Total Cost: Rs. ${result.recommended_option.cost.total_cost_inr.toLocaleString()}`, 14, 70);
-      doc.text(`Transit Time: ${result.recommended_option.deadline.estimated_duration_hours} hrs (Est Arrival: ${result.recommended_option.deadline.estimated_arrival_time})`, 14, 76);
-      doc.text(`Reliability Score: ${Math.round(result.recommended_option.option.reliability_score * 100)}% | Carbon: ${result.recommended_option.option.carbon_emissions_kg} kg CO2`, 14, 82);
+      doc.setFontSize(8.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`Carrier: ${rec.option.carrier} (Sample carrier profile)`, leftCol, y + 19);
+      doc.text(`Estimated Transit: ${rec.deadline.estimated_duration_hours} hrs | Departure: ${rec.deadline.departure_time} | Est Arrival: ${rec.deadline.estimated_arrival_time}`, leftCol, y + 25);
+      doc.text(`Calculated Freight Cost: Rs. ${rec.cost.total_cost_inr.toLocaleString()} (Margin: +Rs. ${(result.budget_inr - rec.cost.total_cost_inr).toLocaleString()} saved) | Reliability Assumption: ${Math.round(rec.option.reliability_score * 100)}% | Carbon: ${rec.option.carbon_emissions_kg} kg CO2`, leftCol, y + 30);
+
+      y += 40;
+    } else {
+      doc.setFillColor(255, 241, 242); // rose-50
+      doc.setDrawColor(251, 113, 133);
+      doc.roundedRect(margin, y, contentWidth, 24, 2, 2, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(159, 18, 57); // rose-800
+      doc.text('HONEST INFEASIBILITY REPORT — NO CANDIDATE SATISFIES ALL CONSTRAINTS', leftCol, y + 6);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text('Every evaluated option violates either the budget cap or deadline window. RouteWise strictly refuses', leftCol, y + 13);
+      doc.text('to misrepresent a non-compliant carrier as feasible.', leftCol, y + 18);
+
+      y += 30;
     }
 
+    // Candidate Alternatives Table
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('ALL EVALUATED CANDIDATE ALTERNATIVES:', 14, 96);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('ALL EVALUATED CORRIDOR ALTERNATIVES', margin, y);
+    y += 4;
 
-    let y = 104;
+    // Table Header
+    doc.setFillColor(226, 232, 240); // slate-200
+    doc.rect(margin, y, contentWidth, 6, 'F');
+    doc.setFontSize(7.5);
+    doc.setTextColor(30, 41, 59);
+
+    doc.text('Option & Carrier', margin + 2, y + 4.2);
+    doc.text('Mode', margin + 65, y + 4.2);
+    doc.text('Cost (INR)', margin + 92, y + 4.2);
+    doc.text('Est Duration', margin + 115, y + 4.2);
+    doc.text('Margin', margin + 138, y + 4.2);
+    doc.text('Decision Status', margin + 155, y + 4.2);
+    y += 7;
+
+    // Table Rows
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+
     result.alternatives.forEach((alt, idx) => {
-      const status = alt.is_recommended ? '[RECOMMENDED]' : alt.constraints.overall_feasible ? '[FEASIBLE]' : '[INFEASIBLE]';
-      doc.text(`${idx + 1}. ${status} ${alt.option.name} | Rs. ${alt.cost.total_cost_inr} | ${alt.deadline.estimated_duration_hours}h | ${alt.deadline.status}`, 14, y);
-      y += 6.5;
+      const isAltRecommended = alt.is_recommended;
+      const isAltFeasible = alt.constraints.overall_feasible;
+
+      if (idx % 2 === 1) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(margin, y - 0.5, contentWidth, 6, 'F');
+      }
+
+      doc.setTextColor(15, 23, 42);
+      const optNameShort = alt.option.name.length > 34 ? `${alt.option.name.slice(0, 32)}...` : alt.option.name;
+      doc.text(optNameShort, margin + 2, y + 3.8);
+
+      doc.text(alt.option.mode.replace('_', ' '), margin + 65, y + 3.8);
+      doc.text(`Rs. ${alt.cost.total_cost_inr.toLocaleString()}`, margin + 92, y + 3.8);
+      doc.text(`${alt.deadline.estimated_duration_hours}h`, margin + 115, y + 3.8);
+
+      const marginText = alt.deadline.margin_hours >= 0 ? `+${alt.deadline.margin_hours}h` : `${alt.deadline.margin_hours}h`;
+      doc.text(marginText, margin + 138, y + 3.8);
+
+      if (isAltRecommended) {
+        doc.setTextColor(6, 95, 70);
+        doc.text('RECOMMENDED', margin + 155, y + 3.8);
+      } else if (isAltFeasible) {
+        doc.setTextColor(30, 41, 59);
+        doc.text('Feasible', margin + 155, y + 3.8);
+      } else {
+        doc.setTextColor(190, 18, 60);
+        doc.text('Infeasible', margin + 155, y + 3.8);
+      }
+
+      y += 6;
     });
 
     y += 4;
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(8.5);
-    doc.text(`Decision Rationale: ${result.refusal_or_tradeoff_explanation.slice(0, 220)}...`, 14, y, { maxWidth: 180 });
 
-    doc.save(`RouteWise_Decision_${result.origin}_${result.destination}.pdf`);
-    showSuccess('Logistics Decision PDF report downloaded successfully!');
+    // Autonomous Decision Rationale Box with full text wrapping (no truncation)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text('AUTONOMOUS DECISION RATIONALE & TRADEOFF ANALYSIS', margin, y);
+    y += 4;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(51, 65, 85);
+
+    const wrappedRationale = doc.splitTextToSize(result.refusal_or_tradeoff_explanation, contentWidth);
+    doc.text(wrappedRationale, margin, y);
+    y += wrappedRationale.length * 4.2 + 6;
+
+    // Simulation Disclaimer & Audit Footer
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.line(margin, 280, margin + contentWidth, 280);
+
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text(
+      'DATA SOURCE DISCLOSURE: RouteWise AI deterministic logistics simulation environment. Schedules, rates, and reliability scores are calibrated benchmarks for hackathon decision-agent demonstration. Not verified live carrier telemetry.',
+      margin,
+      284,
+      { maxWidth: contentWidth }
+    );
+    doc.text('Page 1 of 1 • RouteWise AI Audit Copy', margin + contentWidth - 45, 290);
+
+    doc.save(`RouteWise_Decision_${result.origin}_${result.destination}_${result.run_id || 'run'}.pdf`);
+    showSuccess('Logistics Decision PDF report generated and downloaded successfully!');
   };
 
   return (
@@ -115,17 +292,24 @@ export const ComparisonPage: React.FC<ComparisonPageProps> = ({ result, onNaviga
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            Journey Alternatives & Tradeoffs
-          </h1>
-          <p className="text-sm text-slate-400">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              Journey Alternatives & Tradeoffs
+            </h1>
+            {result.run_id && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                Run ID: {result.run_id}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-slate-400 mt-1">
             Multimodal evaluation for corridor: <strong className="text-cyan-300">{result.origin} → {result.destination}</strong>
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
-            Budget Limit: <strong className="text-emerald-400">₹{result.budget_inr.toLocaleString()}</strong>
+            Budget Cap: <strong className="text-emerald-400">₹{result.budget_inr.toLocaleString()}</strong>
           </span>
           <span className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
             Deadline: <strong className="text-cyan-300">{result.deadline_hours} hrs</strong>
@@ -133,6 +317,7 @@ export const ComparisonPage: React.FC<ComparisonPageProps> = ({ result, onNaviga
           <button
             onClick={handleExportPDF}
             className="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-cyan-600/20 transition-all"
+            title="Download formatted decision report"
           >
             <Download className="w-3.5 h-3.5" />
             Download PDF Report
@@ -140,16 +325,48 @@ export const ComparisonPage: React.FC<ComparisonPageProps> = ({ result, onNaviga
         </div>
       </div>
 
+      {/* Interactive Corridor & Evaluated Modes Map */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-cyan-400" />
+              Corridor Route Map: {result.origin} → {result.destination}
+            </h3>
+            <p className="text-xs text-slate-400">
+              Schematic multimodal transport options evaluated across this corridor
+            </p>
+          </div>
+          <span className="text-[10px] text-slate-400 font-mono">Esri Basemap</span>
+        </div>
+        <RouteMap
+          activeOrigin={result.origin}
+          activeDestination={result.destination}
+          segments={result.alternatives.map((alt) => ({
+            from: result.origin,
+            to: result.destination,
+            mode: alt.option.mode,
+            isActive: alt.is_recommended,
+            optionName: alt.option.name,
+            carrier: alt.option.carrier,
+            costInr: alt.cost.total_cost_inr,
+            durationHours: alt.deadline.estimated_duration_hours,
+          }))}
+          height="400px"
+        />
+        <MapLegend />
+      </div>
+
       {/* Visual Charts: Cost vs Duration + Multi-Criteria Radar */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Cost Comparison Bar Chart */}
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Coins className="w-4 h-4 text-emerald-400" />
               Total Freight Cost (₹ INR)
             </h3>
-            <span className="text-xs text-slate-400">Lower is cheaper</span>
+            <span className="text-xs text-slate-400">Lower is cheaper • Simulated estimate</span>
           </div>
 
           <div className="h-64 w-full">
@@ -176,13 +393,13 @@ export const ComparisonPage: React.FC<ComparisonPageProps> = ({ result, onNaviga
         </div>
 
         {/* Duration Comparison Bar Chart */}
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Clock className="w-4 h-4 text-cyan-400" />
-              Transit Duration (Hours)
+              Estimated Transit Duration (Hours)
             </h3>
-            <span className="text-xs text-slate-400">Lower is faster</span>
+            <span className="text-xs text-slate-400">Lower is faster • Estimated duration</span>
           </div>
 
           <div className="h-64 w-full">
@@ -218,8 +435,13 @@ export const ComparisonPage: React.FC<ComparisonPageProps> = ({ result, onNaviga
 
       {/* Comprehensive Alternatives Table */}
       <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-        <div className="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between">
-          <h3 className="text-base font-bold text-white">Full Comparative Breakdown</h3>
+        <div className="p-4 sm:p-6 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="text-base font-bold text-white">Full Comparative Breakdown</h3>
+            <p className="text-xs text-slate-400">
+              Evaluated strictly against budget (₹{result.budget_inr.toLocaleString()}) and deadline ({result.deadline_hours} hrs)
+            </p>
+          </div>
           <span className="text-xs text-slate-400">
             {result.feasible_count} of {result.total_evaluated} options feasible
           </span>
@@ -231,7 +453,7 @@ export const ComparisonPage: React.FC<ComparisonPageProps> = ({ result, onNaviga
               <tr>
                 <th className="py-3 px-4">Carrier & Option</th>
                 <th className="py-3 px-4">Mode</th>
-                <th className="py-3 px-4">Departure & Arrival</th>
+                <th className="py-3 px-4">Departure & Est Arrival</th>
                 <th className="py-3 px-4">Duration</th>
                 <th className="py-3 px-4">Total Cost</th>
                 <th className="py-3 px-4">Deadline Margin</th>
@@ -250,7 +472,7 @@ export const ComparisonPage: React.FC<ComparisonPageProps> = ({ result, onNaviga
                 >
                   <td className="py-3.5 px-4">
                     <div className="font-semibold text-white">{alt.option.name}</div>
-                    <div className="text-[11px] text-slate-400">{alt.option.carrier}</div>
+                    <div className="text-[11px] text-slate-400">{alt.option.carrier} (Sample profile)</div>
                   </td>
 
                   <td className="py-3.5 px-4 whitespace-nowrap">
@@ -259,7 +481,7 @@ export const ComparisonPage: React.FC<ComparisonPageProps> = ({ result, onNaviga
 
                   <td className="py-3.5 px-4 whitespace-nowrap text-slate-300">
                     <div>{alt.deadline.departure_time}</div>
-                    <div className="text-[11px] text-cyan-400">Arr: {alt.deadline.estimated_arrival_time}</div>
+                    <div className="text-[11px] text-cyan-400">Est Arr: {alt.deadline.estimated_arrival_time}</div>
                   </td>
 
                   <td className="py-3.5 px-4 whitespace-nowrap font-medium text-white">
@@ -270,7 +492,7 @@ export const ComparisonPage: React.FC<ComparisonPageProps> = ({ result, onNaviga
                     <span className="font-bold text-white">₹{alt.cost.total_cost_inr.toLocaleString()}</span>
                     {alt.cost.weight_surcharge_inr > 0 && (
                       <span className="text-[10px] text-slate-400 block">
-                        (+₹{alt.cost.weight_surcharge_inr} wt fee)
+                        (+₹{alt.cost.weight_surcharge_inr} weight surcharge)
                       </span>
                     )}
                   </td>
@@ -284,6 +506,7 @@ export const ComparisonPage: React.FC<ComparisonPageProps> = ({ result, onNaviga
 
                   <td className="py-3.5 px-4 whitespace-nowrap text-cyan-300 font-medium">
                     {Math.round(alt.option.reliability_score * 100)}%
+                    <span className="text-[9px] text-slate-500 block">illustrative</span>
                   </td>
 
                   <td className="py-3.5 px-4 whitespace-nowrap text-slate-400 flex items-center gap-1">

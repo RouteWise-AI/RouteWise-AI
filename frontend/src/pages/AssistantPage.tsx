@@ -11,11 +11,16 @@ import {
   Clock,
   ArrowRight,
   Copy,
+  MapPin,
+  Map as MapIcon,
 } from 'lucide-react';
 import type { ChatMessageItem } from '../types';
+import { RouteMap, MapLegend } from '../components/RouteMap';
 import { ChatMessageSkeleton } from '../components/Skeleton';
 import { useToast } from '../components/Toast';
 import { api } from '../services/api';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const SAMPLE_PROMPTS = [
   "Plan a delivery from Vijayawada to Visakhapatnam within six hours, with a maximum budget of ₹2,000. Prefer a reliable option.",
@@ -39,6 +44,7 @@ export const AssistantPage: React.FC = () => {
   ]);
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [showNetworkMap, setShowNetworkMap] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -125,14 +131,43 @@ export const AssistantPage: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={handleResetChat}
-          className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white flex items-center gap-1.5 cursor-pointer self-start sm:self-auto transition-all"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          Reset Chat
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() => setShowNetworkMap((prev) => !prev)}
+            className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1.5 cursor-pointer transition-all ${
+              showNetworkMap
+                ? 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300'
+                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+            }`}
+          >
+            <MapIcon className="w-3.5 h-3.5 text-cyan-400" />
+            {showNetworkMap ? 'Hide Network Map' : 'Show Network Map'}
+          </button>
+
+          <button
+            onClick={handleResetChat}
+            className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white flex items-center gap-1.5 cursor-pointer transition-all"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Reset Chat
+          </button>
+        </div>
       </div>
+
+      {/* Collapsible Logistics Network Map */}
+      {showNetworkMap && (
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-2">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="font-semibold text-white flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+              Active India Multimodal Logistics Network (10 Hubs)
+            </span>
+            <span className="text-[10px] text-slate-500 font-mono">Esri Basemap</span>
+          </div>
+          <RouteMap height="240px" />
+          <MapLegend />
+        </div>
+      )}
 
       {/* Suggested Scenario Prompts */}
       <div className="space-y-2">
@@ -186,13 +221,95 @@ export const AssistantPage: React.FC = () => {
                 )}
 
                 <div
-                  className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed whitespace-pre-wrap relative group ${
+                  className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed relative group ${
                     isUser
-                      ? 'bg-blue-600 text-white rounded-tr-none shadow-md'
+                      ? 'bg-blue-600 text-white rounded-tr-none shadow-md whitespace-pre-wrap'
                       : 'bg-[#0f172a] border border-slate-800 text-slate-200 rounded-tl-none shadow-sm'
                   }`}
                 >
-                  {m.content}
+                  {isUser ? (
+                    <span>{m.content}</span>
+                  ) : (
+                    <div className="space-y-2 text-slate-200">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          h1: ({ children }) => <h1 className="text-base font-bold text-white mb-2">{children}</h1>,
+                          h2: ({ children }) => <h2 className="text-sm font-bold text-cyan-300 mb-1.5">{children}</h2>,
+                          h3: ({ children }) => <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-wide mb-1">{children}</h3>,
+                          p: ({ children }) => <p className="mb-2 leading-relaxed text-slate-200">{children}</p>,
+                          ul: ({ children }) => <ul className="list-disc list-inside space-y-1 mb-2 text-slate-300">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 mb-2 text-slate-300">{children}</ol>,
+                          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                          table: ({ children }) => (
+                            <div className="overflow-x-auto my-2 rounded-lg border border-slate-700/60">
+                              <table className="min-w-full divide-y divide-slate-800 text-xs text-left">{children}</table>
+                            </div>
+                          ),
+                          th: ({ children }) => <th className="px-3 py-1.5 bg-slate-800/80 font-bold text-slate-300 text-[11px] uppercase tracking-wider">{children}</th>,
+                          td: ({ children }) => <td className="px-3 py-1.5 border-t border-slate-800/60 text-slate-200">{children}</td>,
+                          strong: ({ children }) => <strong className="font-bold text-white">{children}</strong>,
+                          blockquote: ({ children }) => (
+                            <blockquote className="border-l-2 border-cyan-500 pl-3 italic text-slate-400 my-2">{children}</blockquote>
+                          ),
+                          code: ({ className, children, ...props }: any) => {
+                            const match = /language-(\w+)/.exec(className || '');
+                            const isBlock = Boolean(match) || (typeof children === 'string' && children.includes('\n'));
+                            return isBlock ? (
+                              <pre className="bg-slate-950 p-3 rounded-lg overflow-x-auto text-xs font-mono text-cyan-200 border border-slate-800 my-2">
+                                <code className={className} {...props}>{children}</code>
+                              </pre>
+                            ) : (
+                              <code className="bg-slate-800 text-cyan-300 px-1 py-0.5 rounded font-mono text-[11px]" {...props}>
+                                {children}
+                              </code>
+                            );
+                          },
+                        }}
+                      >
+                        {m.content}
+                      </ReactMarkdown>
+
+                      {/* Embedded Interactive Corridor Map if tool resulted in route recommendation */}
+                      {(() => {
+                        const routeTool = m.tools_executed?.find(
+                          (t) => (t.tool === 'compare_routes' || t.tool === 'replan_journey') && (t.arguments?.origin || t.result_data?.origin)
+                        );
+                        if (!routeTool) return null;
+                        const origin = routeTool.arguments?.origin || routeTool.result_data?.origin;
+                        const destination = routeTool.arguments?.destination || routeTool.result_data?.destination;
+                        if (!origin || !destination) return null;
+
+                        const alternatives = routeTool.result_data?.alternatives || [];
+                        const segments = alternatives.length > 0
+                          ? alternatives.map((alt: any) => ({
+                              from: origin,
+                              to: destination,
+                              mode: alt.option?.mode || 'EXPRESS_ROAD',
+                              isActive: alt.is_recommended,
+                            }))
+                          : undefined;
+
+                        return (
+                          <div className="mt-3 pt-3 border-t border-slate-800/80 space-y-2">
+                            <div className="flex items-center justify-between text-xs text-slate-400">
+                              <span className="font-semibold text-cyan-300 flex items-center gap-1.5">
+                                <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+                                Evaluated Corridor: {origin} → {destination}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-mono">Esri Basemap</span>
+                            </div>
+                            <RouteMap
+                              activeOrigin={origin}
+                              activeDestination={destination}
+                              segments={segments}
+                              height="190px"
+                            />
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                   {!isUser && (
                     <button
                       onClick={() => handleCopyMessage(m.content)}

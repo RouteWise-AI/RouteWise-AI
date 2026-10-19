@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional, Tuple
 from .base import BaseAIProvider
+from ..logistics.sample_data import get_options_for_route, get_location, LOCATIONS
 from ..schemas.api import ChatMessage, ChatResponse
 
 WORD_TO_NUM = {
@@ -28,39 +29,60 @@ class MockProvider(BaseAIProvider):
         constraints: Dict[str, Any] = {}
         lower = text.lower()
 
-        # Origin & Destination patterns
-        route_match = re.search(r"(?:from\s+)?([a-z\s]+?)\s+to\s+([a-z\s]+?)(?:[\.,;\n]|\s+(?:within|with|under|in|for|having)|$)", lower)
-        if route_match:
-            cand_orig = route_match.group(1).strip().title()
-            cand_dest = route_match.group(2).strip().title()
-            # Clean common noise words
-            cand_orig = re.sub(r"^(plan|a|delivery|journey|shipment|send|transport)\s+", "", cand_orig, flags=re.IGNORECASE).strip()
-            if cand_orig and cand_dest:
-                constraints["origin"] = cand_orig
-                constraints["destination"] = cand_dest
+        # 1. First check explicit "from <origin> to <destination>"
+        from_to_match = re.search(r"\bfrom\s+([a-z\s]+?)\s+to\s+([a-z\s]+?)(?:[\.,;\n]|\s+(?:within|with|under|in|for|having)|$)", lower)
+        if from_to_match:
+            raw_orig = from_to_match.group(1).strip()
+            raw_dest = from_to_match.group(2).strip()
+            loc_o = get_location(raw_orig)
+            loc_d = get_location(raw_dest)
+            if loc_o:
+                constraints["origin"] = loc_o.city
+            if loc_d:
+                constraints["destination"] = loc_d.city
 
-        # Known cities shortcut fallback
-        known_cities = ["Vijayawada", "Visakhapatnam", "Hyderabad", "Bengaluru", "Chennai"]
-        if "origin" not in constraints:
-            for c in known_cities:
-                if c.lower() in lower:
-                    if "origin" not in constraints:
+        # 2. Pattern: "<origin> to <destination>" (e.g., "Vijayawada to Visakhapatnam")
+        if "origin" not in constraints or "destination" not in constraints:
+            to_match = re.search(r"([a-z\s]+?)\s+to\s+([a-z\s]+?)(?:[\.,;\n]|\s+(?:within|with|under|in|for|having)|$)", lower)
+            if to_match:
+                raw_orig = re.sub(r"^(?:plan|a|delivery|journey|shipment|send|transport|route|\s+)+", "", to_match.group(1).strip(), flags=re.IGNORECASE).strip()
+                raw_dest = to_match.group(2).strip()
+                loc_o = get_location(raw_orig)
+                loc_d = get_location(raw_dest)
+                if loc_o and "origin" not in constraints:
+                    constraints["origin"] = loc_o.city
+                if loc_d and "destination" not in constraints:
+                    constraints["destination"] = loc_d.city
+
+        # 3. Search for known canonical cities in text
+        if "origin" not in constraints or "destination" not in constraints:
+            for c in LOCATIONS.keys():
+                if re.search(rf"\b{c.lower()}\b", lower):
+                    if "origin" not in constraints and constraints.get("destination", "").lower() != c.lower():
                         constraints["origin"] = c
-                    elif "destination" not in constraints and constraints["origin"] != c:
+                    elif "destination" not in constraints and constraints.get("origin", "").lower() != c.lower():
                         constraints["destination"] = c
 
-        # Context preservation from session history if not found in current message
+        # 4. Context preservation from session history if not found in current message
         if ("origin" not in constraints or "destination" not in constraints) and history:
             for prev_msg in reversed(history):
                 prev_lower = prev_msg.content.lower()
-                for c in known_cities:
-                    if c.lower() in prev_lower:
-                        if "origin" not in constraints:
+                for c in LOCATIONS.keys():
+                    if re.search(rf"\b{c.lower()}\b", prev_lower):
+                        if "origin" not in constraints and constraints.get("destination", "").lower() != c.lower():
                             constraints["origin"] = c
-                        elif "destination" not in constraints and constraints["origin"] != c:
+                        elif "destination" not in constraints and constraints.get("origin", "").lower() != c.lower():
                             constraints["destination"] = c
                 if "origin" in constraints and "destination" in constraints:
                     break
+
+        # 5. Guard against identical origin and destination
+        if constraints.get("origin") and constraints.get("origin") == constraints.get("destination"):
+            other_cities = [c for c in LOCATIONS.keys() if re.search(rf"\b{c.lower()}\b", lower) and c != constraints["origin"]]
+            if other_cities:
+                constraints["destination"] = other_cities[0]
+            else:
+                constraints.pop("destination", None)
 
         # Deadline extraction (hours)
         deadline_match = re.search(r"within\s+(\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:hours|hrs|hr|h)?", lower)
@@ -71,7 +93,20 @@ class MockProvider(BaseAIProvider):
             val_str = deadline_match.group(1)
             val = WORD_TO_NUM.get(val_str, None) or float(val_str)
             constraints["deadline_hours"] = float(val)
-        else:
+        elif history:
+            # Check history for previously established deadline
+            for prev_msg in reversed(history):
+                prev_lower = prev_msg.content.lower()
+                dm = re.search(r"within\s+(\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:hours|hrs|hr|h)?", prev_lower)
+                if not dm:
+                    dm = re.search(r"(\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:hours|hrs|hr|h)\b", prev_lower)
+                if dm:
+                    v_str = dm.group(1)
+                    val = WORD_TO_NUM.get(v_str, None) or float(v_str)
+                    constraints["deadline_hours"] = float(val)
+                    break
+
+        if "deadline_hours" not in constraints:
             constraints["deadline_hours"] = 6.0
 
         # Budget extraction (INR)
@@ -97,6 +132,20 @@ class MockProvider(BaseAIProvider):
                     clean_num = raw_val.replace(",", "")
                     if clean_num:
                         constraints["budget_inr"] = float(clean_num)
+
+        if "budget_inr" not in constraints and history:
+            # Check history for previously established budget
+            for prev_msg in reversed(history):
+                bt = re.search(
+                    r"(?:budget(?:\s+of)?|max(?:\s+budget)?|cost(?:\s+under)?|under)\s*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]+)?)",
+                    prev_msg.content,
+                    re.IGNORECASE,
+                )
+                if bt and bt.group(1):
+                    clean_num = bt.group(1).replace(",", "")
+                    if clean_num:
+                        constraints["budget_inr"] = float(clean_num)
+                        break
 
         if "budget_inr" not in constraints:
             constraints["budget_inr"] = 2000.0
@@ -172,8 +221,13 @@ class MockProvider(BaseAIProvider):
         # Decide which MCP tool to invoke
         if constraints.get("is_replan"):
             tool_name = "replan_journey"
+            try:
+                corridor_options = get_options_for_route(origin, destination)
+                default_option_id = corridor_options[0].id if corridor_options else "BZA-VTZ-RAIL-01"
+            except Exception:
+                default_option_id = "BZA-VTZ-RAIL-01"
             tool_args = {
-                "original_option_id": "BZA-VTZ-RAIL-01",
+                "original_option_id": default_option_id,
                 "origin": origin,
                 "destination": destination,
                 "delay_hours": constraints.get("delay_hours", 2.0),
@@ -193,33 +247,75 @@ class MockProvider(BaseAIProvider):
                 "priority": priority,
             }
 
-        # Call MCP server via genuine MCP client
+        # Call MCP server via genuine MCP client with resilient local engine fallback
         try:
             tool_result = await self.mcp_client.call_tool(tool_name, tool_args, provider_mode="mock")
             tools_executed.append(
                 {
                     "tool": tool_name,
                     "arguments": tool_args,
-                    "result_summary": f"Executed via Streamable HTTP MCP (status: success)",
+                    "result_summary": "Executed via Streamable HTTP MCP (status: success)",
                     "result_data": tool_result,
+                    "is_real_mcp": True,
                 }
             )
         except Exception as e:
-            tools_executed.append(
-                {
-                    "tool": tool_name,
-                    "arguments": tool_args,
-                    "error": str(e),
-                }
-            )
-            return ChatResponse(
-                response=f"Error executing MCP tool '{tool_name}' through Streamable HTTP: {e}. Please ensure the MCP server is running on port 8000.",
-                provider_used="mock",
-                model_id="deterministic-mock-v1",
-                tools_executed=tools_executed,
-                extracted_constraints=constraints,
-                session_id=session_id,
-            )
+            # Fall back to in-process logistics engine so assistant never fails when port 8000 is offline or busy
+            try:
+                from ..logistics.engine import (
+                    compare_routes as engine_compare_routes,
+                    replan_journey as engine_replan_journey,
+                )
+                from ..logistics.models import PriorityGoal
+                pgoal = PriorityGoal(priority.upper()) if str(priority).upper() in PriorityGoal.__members__ else PriorityGoal.BALANCED
+                if tool_name == "compare_routes":
+                    cmp_res = engine_compare_routes(
+                        origin=origin,
+                        destination=destination,
+                        budget_inr=budget,
+                        deadline_hours=deadline,
+                        weight_kg=weight,
+                        priority=pgoal,
+                    )
+                    tool_result = cmp_res.model_dump()
+                else:
+                    rpl_res = engine_replan_journey(
+                        original_option_id=tool_args.get("original_option_id", "BZA-VTZ-RAIL-01"),
+                        origin=origin,
+                        destination=destination,
+                        delay_hours=tool_args.get("delay_hours", 2.0),
+                        budget_inr=budget,
+                        deadline_hours=deadline,
+                        weight_kg=weight,
+                        priority=pgoal,
+                    )
+                    tool_result = rpl_res.model_dump()
+
+                tools_executed.append(
+                    {
+                        "tool": tool_name,
+                        "arguments": tool_args,
+                        "result_summary": "Executed via local in-process engine fallback (MCP server on port 8000 offline)",
+                        "result_data": tool_result,
+                        "is_real_mcp": False,
+                    }
+                )
+            except Exception as inner_err:
+                tools_executed.append(
+                    {
+                        "tool": tool_name,
+                        "arguments": tool_args,
+                        "error": str(inner_err),
+                    }
+                )
+                return ChatResponse(
+                    response=f"Error evaluating journey options: {inner_err}",
+                    provider_used="mock",
+                    model_id="deterministic-mock-v1",
+                    tools_executed=tools_executed,
+                    extracted_constraints=constraints,
+                    session_id=session_id,
+                )
 
         # Formulate grounded response based on actual tool output
         if tool_name == "compare_routes":

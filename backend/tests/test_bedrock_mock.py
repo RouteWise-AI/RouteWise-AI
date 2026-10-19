@@ -88,3 +88,36 @@ async def test_bedrock_converse_tool_use_loop():
         assert "Rail Express" in res.response
         assert mock_client.converse.call_count == 2
 
+
+@pytest.mark.anyio
+async def test_bedrock_fallback_when_credentials_fail():
+    from botocore.exceptions import NoCredentialsError
+    provider = BedrockProvider(default_mcp_client)
+    with patch.object(provider, "_get_client", side_effect=NoCredentialsError()):
+        res = await provider.process_chat(
+            message="Plan a delivery from Vijayawada to Visakhapatnam within 6 hours, budget ₹2,000.",
+            history=[],
+            session_id="fallback-test",
+        )
+        assert res.provider_used == "mock_fallback"
+        assert "Amazon Bedrock Offline" in res.response
+        assert len(res.tools_executed) == 1
+        assert res.tools_executed[0]["tool"] == "compare_routes"
+
+
+def test_bedrock_bearer_token_client_initialization(monkeypatch):
+    """
+    Verify that Bedrock client initializes without AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY
+    when AWS_BEARER_TOKEN_BEDROCK is provided.
+    """
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "dummy-bearer-token-for-test")
+
+    provider = BedrockProvider(default_mcp_client)
+    client = provider._get_client()
+    assert client is not None
+    assert type(client).__name__ == "BedrockRuntime"
+
+
+
